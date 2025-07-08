@@ -1,90 +1,122 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
-  // JSON-default de retorno em caso de falha da API externa
-  const fallbackPayload = {
-    success: true,
-    result:
-      "https://media.istockphoto.com/id/1337144146/vector/default-avatar-profile-icon-vector.jpg?s=612x612&w=0&k=20&c=BIbFwuv7FxTWvh5S3vB6bkT0Qv8Vn8N5Ffseq84ClGI=",
-    is_photo_private: true,
-  }
+  console.log("🔍 API /whatsapp-photo chamada");
 
   try {
-    const { phone } = await request.json()
+    const { phone } = await request.json();
+    console.log("📱 Phone recebido:", phone);
 
     if (!phone) {
+      console.log("❌ Phone vazio");
       return NextResponse.json(
         { success: false, error: "Número de telefone é obrigatório" },
-        {
-          status: 400,
-          headers: { "Access-Control-Allow-Origin": "*" },
-        },
-      )
+        { status: 400, headers: { "Access-Control-Allow-Origin": "*" } }
+      );
     }
 
     // Remove caracteres não numéricos
-    const cleanPhone = phone.replace(/[^0-9]/g, "")
+    const cleanPhone = phone.replace(/[^0-9]/g, "");
+    console.log("🧹 Phone limpo:", cleanPhone);
 
     // Adiciona código do país se não tiver (assumindo Brasil +55)
-    let fullNumber = cleanPhone
+    let fullNumber = cleanPhone;
     if (!cleanPhone.startsWith("55") && cleanPhone.length === 11) {
-      fullNumber = "55" + cleanPhone
+      fullNumber = "55" + cleanPhone;
     }
+    console.log("🌍 Número completo:", fullNumber);
 
-    const response = await fetch(
-      `https://primary-production-aac6.up.railway.app/webhook/request_photo?tel=${fullNumber}`,
-      {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-          Origin: "https://whatspy.chat",
-        },
-        // timeout de 10 s (Edge Runtime aceita AbortController)
-        signal: AbortSignal.timeout?.(10_000),
-      },
-    )
+    const apiUrl = `https://primary-production-aac6.up.railway.app/webhook/request_photo?tel=${fullNumber}`;
+    console.log("🔗 URL da API:", apiUrl);
 
-    // Se a API externa falhar, devolvemos payload padrão 200
-    if (!response.ok) {
-      console.error("API externa retornou status:", response.status)
-      return NextResponse.json(fallbackPayload, {
-        status: 200,
-        headers: { "Access-Control-Allow-Origin": "*" },
-      })
+    const maxRetries = 2;
+    let attempt = 0;
+
+    while (attempt < maxRetries) {
+      try {
+        console.log(`🌐 Tentativa ${attempt + 1} de fetch para API externa...`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+        const response = await fetch(apiUrl, {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+          },
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+        console.log("📡 Response status:", response.status, "ok:", response.ok);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("❌ API externa retornou erro:", response.status, errorText);
+          throw new Error(`Falha na API externa: ${response.status} - ${errorText}`);
+        }
+
+        let data;
+        try {
+          data = await response.json();
+        } catch (jsonError) {
+          console.error("❌ Erro ao parsear JSON:", jsonError);
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Resposta inválida da API externa",
+              result: "https://media.istockphoto.com/id/1337144146/vector/default-avatar-profile-icon-vector.jpg?s=612x612&w=0&k=20&c=BIbFwuv7FxTWvh5S3vB6bkT0Qv8Vn8N5Ffseq84ClGI=",
+              is_photo_private: true,
+            },
+            { status: 500, headers: { "Access-Control-Allow-Origin": "*" } }
+          );
+        }
+
+        console.log("📄 Data recebida:", data);
+
+        const isPhotoPrivate = !data?.link || data.link.includes("no-user-image-icon");
+        console.log("🔒 Foto privada:", isPhotoPrivate);
+
+        const result = {
+          success: true,
+          result: isPhotoPrivate
+            ? "https://media.istockphoto.com/id/1337144146/vector/default-avatar-profile-icon-vector.jpg?s=612x612&w=0&k=20&c=BIbFwuv7FxTWvh5S3vB6bkT0Qv8Vn8N5Ffseq84ClGI="
+            : data.link,
+          is_photo_private: isPhotoPrivate,
+        };
+        console.log("✅ Retornando sucesso:", result);
+
+        return NextResponse.json(result, {
+          status: 200,
+          headers: { "Access-Control-Allow-Origin": "*" },
+        });
+      } catch (fetchError: any) {
+        attempt++;
+        if (attempt === maxRetries) {
+          console.error("💥 Todas as tentativas falharam:", fetchError.message);
+          return NextResponse.json(
+            {
+              success: false,
+              error: `Erro ao conectar com API externa após ${maxRetries} tentativas: ${fetchError.message}`,
+              result: "https://media.istockphoto.com/id/1337144146/vector/default-avatar-profile-icon-vector.jpg?s=612x612&w=0&k=20&c=BIbFwuv7FxTWvh5S3vB6bkT0Qv8Vn8N5Ffseq84ClGI=",
+              is_photo_private: true,
+            },
+            { status: 502, headers: { "Access-Control-Allow-Origin": "*" } }
+          );
+        }
+        console.log(`🔄 Tentando novamente (tentativa ${attempt + 1})...`);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
     }
-
-    const data = await response.json()
-
-    const isPhotoPrivate = !data?.link || data.link.includes("no-user-image-icon")
-
+  } catch (err: any) {
+    console.error("💥 Erro geral:", err.message);
     return NextResponse.json(
       {
-        success: true,
-        result: isPhotoPrivate ? fallbackPayload.result : data.link,
-        is_photo_private: isPhotoPrivate,
+        success: false,
+        error: `Erro interno do servidor: ${err.message}`,
+        result: "https://media.istockphoto.com/id/1337144146/vector/default-avatar-profile-icon-vector.jpg?s=612x612&w=0&k=20&c=BIbFwuv7FxTWvh5S3vB6bkT0Qv8Vn8N5Ffseq84ClGI=",
+        is_photo_private: true,
       },
-      {
-        status: 200,
-        headers: { "Access-Control-Allow-Origin": "*" },
-      },
-    )
-  } catch (err) {
-    console.error("Erro no webhook WhatsApp:", err)
-    // Nunca deixamos propagar status 500; devolvemos fallback
-    return NextResponse.json(fallbackPayload, {
-      status: 200,
-      headers: { "Access-Control-Allow-Origin": "*" },
-    })
+      { status: 500, headers: { "Access-Control-Allow-Origin": "*" } }
+    );
   }
-}
-
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 200,
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-    },
-  })
 }

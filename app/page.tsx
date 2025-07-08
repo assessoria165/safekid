@@ -48,11 +48,11 @@ type Step =
   | "thank-you"
 
 interface WhatsAppProfileResponse {
-  success: boolean
-  result?: string
-  is_photo_private?: boolean
-  phone_number?: string
-  error?: string
+  success: boolean;
+  result?: string;
+  is_photo_private?: boolean;
+  phone_number?: string;
+  error?: string;
 }
 
 interface Notification {
@@ -388,64 +388,74 @@ export default function SafeKidAIFunil() {
   }, [currentStep])
 
   // Função para buscar foto do WhatsApp
-  const fetchWhatsAppProfile = useCallback(async (phone: string) => {
-    if (!phone || phone.length < 8) return
+ const fetchWhatsAppProfile = useCallback(async (phone: string, countryCode: string) => {
+  if (!phone || phone.replace(/\D/g, "").length < 8) return;
 
-    setIsLoadingProfile(true)
-    setApiError("")
-    setProfileLoaded(false)
+  setIsLoadingProfile(true);
+  setApiError("");
+  setProfileLoaded(false);
 
-    try {
-      const response = await fetch("/api/whatsapp-photo", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ phone: phone }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const data: WhatsAppProfileResponse = await response.json()
-
-      if (data.success) {
-        setProfileImage(data.result || "")
-        setIsProfilePrivate(data.is_photo_private || false)
-        setProfileLoaded(true)
-      } else {
-        setProfileImage("")
-        setIsProfilePrivate(true)
-        setApiError("Não foi possível carregar a foto do perfil")
-        setProfileLoaded(true)
-      }
-    } catch (error) {
-      console.error("Erro ao buscar foto:", error)
-      setProfileImage("")
-      setIsProfilePrivate(true)
-      setApiError("Erro ao conectar com o servidor")
-      setProfileLoaded(true)
-    } finally {
-      setIsLoadingProfile(false)
+  try {
+    // Garante que o número inclua o código do país
+    let formattedPhone = phone.replace(/\D/g, "");
+    if (countryCode && !formattedPhone.startsWith(countryCode.replace("+", ""))) {
+      formattedPhone = countryCode.replace("+", "") + formattedPhone;
     }
-  }, [])
+
+    const response = await fetch("/api/whatsapp-photo", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ phone: formattedPhone }),
+    });
+
+    let data: WhatsAppProfileResponse;
+    try {
+      data = await response.json();
+    } catch {
+      data = { success: false, error: "Resposta inválida do servidor" };
+    }
+
+    if (!response.ok || !data?.success) {
+      console.error("Erro na API interna:", data?.error || "Resposta não-OK", response.status);
+      setProfileImage("");
+      setIsProfilePrivate(true);
+      setApiError(data?.error || "Não foi possível carregar a foto do perfil");
+      setProfileLoaded(true);
+      return;
+    }
+
+    setProfileImage(data.result || "");
+    setIsProfilePrivate(!!data.is_photo_private);
+    setApiError("");
+    setProfileLoaded(true);
+  } catch (error: any) {
+    console.error("Erro ao buscar foto:", error.message);
+    setProfileImage("");
+    setIsProfilePrivate(true);
+    setApiError("Erro ao conectar com o servidor");
+    setProfileLoaded(true);
+  } finally {
+    setIsLoadingProfile(false);
+  }
+}, []);
 
   // Handle phone number change
   const handlePhoneChange = (value: string, country: any, isValid: boolean) => {
-    setWhatsappNumber(value)
-    setIsPhoneValid(isValid)
+  setWhatsappNumber(value);
+  setIsPhoneValid(isValid);
 
-    const cleanPhone = value.replace(/\D/g, "")
-    if (isValid && cleanPhone.length >= 8) {
-      fetchWhatsAppProfile(cleanPhone)
-    } else {
-      setProfileImage("")
-      setIsProfilePrivate(false)
-      setApiError("")
-      setProfileLoaded(false)
-    }
+  const cleanPhone = value.replace(/\D/g, "");
+  if (isValid && cleanPhone.length >= 8) {
+    fetchWhatsAppProfile(cleanPhone, country?.dialCode || "+55");
+  } else {
+    setProfileImage("");
+    setIsProfilePrivate(false);
+    setApiError("");
+    setProfileLoaded(false);
   }
+};
 
   // Função para verificar se pode avançar
   const canProceed = () => {
@@ -778,158 +788,160 @@ export default function SafeKidAIFunil() {
         {/* Formulário de Coleta */}
         {currentStep === "form" && (
           <motion.div
-            key="form"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="min-h-screen relative overflow-hidden flex items-center justify-center"
-            style={{
-              background: "linear-gradient(135deg, #0B1A30 0%, #1a2332 50%, #0B1A30 100%)",
-            }}
-          >
-            {/* Background Image */}
-            <div
-              className="absolute inset-0 opacity-10"
-              style={{
-                backgroundImage: "url('/background/tech-kids.jpeg')",
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-                filter: "blur(2px)",
-              }}
+  key="form"
+  initial={{ opacity: 0 }}
+  animate={{ opacity: 1 }}
+  exit={{ opacity: 0 }}
+  className="min-h-screen relative overflow-hidden flex items-center justify-center"
+  style={{
+    background: "linear-gradient(135deg, #0B1A30 0%, #1a2332 50%, #0B1A30 100%)",
+  }}
+>
+  {/* Background Image */}
+  <div
+    className="absolute inset-0 opacity-10"
+    style={{
+      backgroundImage: "url('/background/tech-kids.jpeg')",
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+      filter: "blur(2px)",
+    }}
+  />
+
+  <div className="relative z-10 w-full max-w-md mx-auto px-4">
+    <Card className="bg-white/95 backdrop-blur-sm border-0 shadow-2xl rounded-2xl">
+      <CardContent className="p-8">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-[#885EFF] to-[#1FE3C2] rounded-xl mb-4">
+            <Wifi className="w-8 h-8 text-white" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Análise de Segurança Digital</h2>
+          <p className="text-gray-600">Insira os dados para iniciar a verificação forense</p>
+        </div>
+
+        <form ref={formRef} className="space-y-6" onKeyDown={handleKeyDown}>
+          {/* Nome do filho */}
+          <div>
+            <label className="block text-gray-700 font-semibold mb-2">Nome completo do seu filho(a)</label>
+            <Input
+              ref={nameInputRef}
+              type="text"
+              placeholder="Digite o nome completo"
+              className="input-enhanced h-12 text-base"
+              defaultValue={childName}
+              onChange={(e) => setChildName(e.target.value)}
+              required
+            />
+          </div>
+
+          {/* Número do filho */}
+          <div>
+            <label className="block text-gray-700 font-semibold mb-2">Número do filho(a)</label>
+            <CountryPhoneInput
+              value={whatsappNumber}
+              onChange={handlePhoneChange}
+              placeholder="Digite o número"
+              className="text-base"
             />
 
-            <div className="relative z-10 w-full max-w-md mx-auto px-4">
-              <Card className="bg-white/95 backdrop-blur-sm border-0 shadow-2xl rounded-2xl">
-                <CardContent className="p-8">
-                  {/* Header */}
-                  <div className="text-center mb-8">
-                    <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-[#885EFF] to-[#1FE3C2] rounded-xl mb-4">
-                      <Wifi className="w-8 h-8 text-white" />
+            {/* Exibição da foto de perfil */}
+            {whatsappNumber.replace(/\D/g, "").length >= 8 && (
+              <div className="mt-4 p-4 bg-gray-50 rounded-xl border">
+                <p className="text-sm font-semibold text-gray-700 mb-3 text-center">
+                  {isLoadingProfile
+                    ? "Buscando foto de perfil..."
+                    : profileLoaded
+                    ? profileImage
+                      ? "Foto de perfil encontrada"
+                      : "Foto de perfil não disponível"
+                    : "Aguardando número válido..."}
+                </p>
+
+                <div className="flex justify-center">
+                  {isLoadingProfile ? (
+                    <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center">
+                      <LoadingSpinner size="sm" message="" />
                     </div>
-                    <h2 className="text-2xl font-bold text-gray-800 mb-2">Análise de Segurança Digital</h2>
-                    <p className="text-gray-600">Insira os dados para iniciar a verificação forense</p>
-                  </div>
-
-                  <form ref={formRef} className="space-y-6" onKeyDown={handleKeyDown}>
-                    {/* Nome do filho */}
-                    <div>
-                      <label className="block text-gray-700 font-semibold mb-2">Nome completo do seu filho(a)</label>
-                      <Input
-                        ref={nameInputRef}
-                        type="text"
-                        placeholder="Digite o nome completo"
-                        className="input-enhanced h-12 text-base"
-                        defaultValue={childName}
-                        onChange={(e) => setChildName(e.target.value)}
-                        required
+                  ) : (
+                    <div className="relative">
+                      <img
+                        src={
+                          profileImage ||
+                          (profileLoaded
+                            ? "https://media.istockphoto.com/id/1337144146/vector/default-avatar-profile-icon-vector.jpg?s=612x612&w=0&k=20&c=BIbFwuv7FxTWvh5S3vB6bkT0Qv8Vn8N5Ffseq84ClGI="
+                            : `https://ui-avatars.com/api/?name=User&background=885EFF&color=fff&size=200`)
+                        }
+                        alt="Foto de perfil"
+                        className="w-20 h-20 rounded-full border-4 border-[#885EFF] shadow-lg object-cover"
+                        onError={(e) => {
+                          e.currentTarget.src = "https://media.istockphoto.com/id/1337144146/vector/default-avatar-profile-icon-vector.jpg?s=612x612&w=0&k=20&c=BIbFwuv7FxTWvh5S3vB6bkT0Qv8Vn8N5Ffseq84ClGI=";
+                        }}
                       />
-                    </div>
-
-                    {/* Número do filho */}
-                    <div>
-                      <label className="block text-gray-700 font-semibold mb-2">Número do filho(a)</label>
-                      <CountryPhoneInput
-                        value={whatsappNumber}
-                        onChange={handlePhoneChange}
-                        placeholder="Digite o número"
-                        className="text-base"
-                      />
-
-                      {/* Exibição da foto de perfil */}
-                      {whatsappNumber.replace(/\D/g, "").length >= 8 && (
-                        <div className="mt-4 p-4 bg-gray-50 rounded-xl border">
-                          <p className="text-sm font-semibold text-gray-700 mb-3 text-center">
-                            {isLoadingProfile ? "Buscando foto de perfil..." : "Foto de perfil detectada:"}
-                          </p>
-
-                          <div className="flex justify-center">
-                            {isLoadingProfile ? (
-                              <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center">
-                                <LoadingSpinner size="sm" message="" />
-                              </div>
-                            ) : (
-                              <div className="relative">
-                                <img
-                                  src={
-                                    profileImage ||
-                                    `https://ui-avatars.com/api/?name=User&background=885EFF&color=fff&size=200` ||
-                                    "/placeholder.svg"
-                                  }
-                                  alt="Foto de perfil"
-                                  className="w-20 h-20 rounded-full border-4 border-[#885EFF] shadow-lg object-cover"
-                                  onError={(e) => {
-                                    e.currentTarget.src = `https://ui-avatars.com/api/?name=User&background=885EFF&color=fff&size=200`
-                                  }}
-                                />
-                                {(isProfilePrivate || !profileImage) && (
-                                  <div className="absolute -bottom-1 -right-1 bg-red-500 rounded-full p-1">
-                                    <Lock className="w-3 h-3 text-white" />
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-
-                          {apiError ? (
-                            <p className="text-red-500 text-xs text-center mt-2">{apiError}</p>
-                          ) : isProfilePrivate && !isLoadingProfile ? (
-                            <p className="text-yellow-600 text-xs text-center mt-2">
-                              {profileImage ? "Perfil encontrado" : "Usando avatar padrão"}
-                            </p>
-                          ) : !isLoadingProfile && profileImage ? (
-                            <p className="text-green-600 text-xs text-center mt-2 font-medium">
-                              ✅ Perfil encontrado com sucesso!
-                            </p>
-                          ) : null}
+                      {(isProfilePrivate || !profileImage) && profileLoaded && (
+                        <div className="absolute -bottom-1 -right-1 bg-red-500 rounded-full p-1">
+                          <Lock className="w-3 h-3 text-white" />
                         </div>
                       )}
                     </div>
+                  )}
+                </div>
 
-                    {/* Submit Button */}
-                    <Button
-                      type="button"
-                      onClick={handleStartAnalysis}
-                      disabled={!canProceed() || isTransitioning}
-                      className="w-full bg-gradient-to-r from-[#885EFF] to-[#1FE3C2] hover:from-[#7B52FF] hover:to-[#1BD4B8] text-white font-bold py-4 text-lg rounded-xl btn-enhanced disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                    >
-                      {isLoadingProfile || isTransitioning ? (
-                        <>
-                          <LoadingSpinner size="sm" message="" />
-                          <span className="ml-2">
-                            {isTransitioning ? "Iniciando análise..." : "Verificando perfil..."}
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <Eye className="w-5 h-5 mr-2" />
-                          Iniciar Análise Forense
-                        </>
-                      )}
-                    </Button>
+                {apiError && profileLoaded && (
+                  <p className="text-red-500 text-xs text-center mt-2">{apiError}</p>
+                )}
+                {!apiError && profileLoaded && profileImage && (
+                  <p className="text-green-600 text-xs text-center mt-2 font-medium">✅ Perfil encontrado com sucesso!</p>
+                )}
+              </div>
+            )}
+          </div>
 
-                    {canProceed() && !isLoadingProfile && !isTransitioning && (
-                      <p className="text-green-600 text-sm text-center font-medium">
-                        ✅ Pressione Enter ou clique no botão para continuar
-                      </p>
-                    )}
-                  </form>
+          {/* Submit Button */}
+          <Button
+            type="button"
+            onClick={handleStartAnalysis}
+            disabled={!canProceed() || isTransitioning}
+            className="w-full bg-gradient-to-r from-[#885EFF] to-[#1FE3C2] hover:from-[#7B52FF] hover:to-[#1BD4B8] text-white font-bold py-4 text-lg rounded-xl btn-enhanced disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+          >
+            {isLoadingProfile || isTransitioning ? (
+              <>
+                <LoadingSpinner size="sm" message="" />
+                <span className="ml-2">
+                  {isTransitioning ? "Iniciando análise..." : "Verificando perfil..."}
+                </span>
+              </>
+            ) : (
+              <>
+                <Eye className="w-5 h-5 mr-2" />
+                Iniciar Análise Forense
+              </>
+            )}
+          </Button>
 
-                  <div className="mt-6 text-center">
-                    <div className="flex items-center justify-center gap-4 text-xs text-gray-500">
-                      <div className="flex items-center gap-1">
-                        <Lock className="w-4 h-4" />
-                        <span>Criptografia SSL</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Shield className="w-4 h-4" />
-                        <span>Proteção LGPD</span>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+          {canProceed() && !isLoadingProfile && !isTransitioning && (
+            <p className="text-green-600 text-sm text-center font-medium">
+              ✅ Pressione Enter ou clique no botão para continuar
+            </p>
+          )}
+        </form>
+
+        <div className="mt-6 text-center">
+          <div className="flex items-center justify-center gap-4 text-xs text-gray-500">
+            <div className="flex items-center gap-1">
+              <Lock className="w-4 h-4" />
+              <span>Criptografia SSL</span>
             </div>
-          </motion.div>
+            <div className="flex items-center gap-1">
+              <Shield className="w-4 h-4" />
+              <span>Proteção LGPD</span>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  </div>
+</motion.div>
         )}
 
         {/* Escaneamento Forense */}
@@ -2041,7 +2053,7 @@ export default function SafeKidAIFunil() {
                       <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
                         2
                       </div>
-                      <span>Continuous monitoring is now active</span>
+                      <span>Continuous monitoring is now now active</span>
                     </div>
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
