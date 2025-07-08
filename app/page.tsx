@@ -29,6 +29,7 @@ import { Progress } from "@/components/ui/progress"
 import { CountryPhoneInput } from "@/components/country-phone-input"
 import { LoadingSpinner } from "@/components/loading-spinner"
 import { Checkbox } from "@/components/ui/checkbox"
+import { useDebounce } from "use-debounce"
 
 // Lazy load components for better performance
 const LazyImage = lazy(() => import("next/image"))
@@ -48,11 +49,11 @@ type Step =
   | "thank-you"
 
 interface WhatsAppProfileResponse {
-  success: boolean;
-  result?: string;
-  is_photo_private?: boolean;
-  phone_number?: string;
-  error?: string;
+  success: boolean
+  result?: string
+  is_photo_private?: boolean
+  phone_number?: string
+  error?: string
 }
 
 interface Notification {
@@ -70,7 +71,7 @@ interface PurchaseData {
   totalAmount: number
 }
 
-export default function SafeKidAIFunil() {
+export default function SafeKidAIFunnel() {
   const [currentStep, setCurrentStep] = useState<Step>("welcome")
   const [childName, setChildName] = useState("")
   const [whatsappNumber, setWhatsappNumber] = useState("")
@@ -81,15 +82,17 @@ export default function SafeKidAIFunil() {
   const [apiError, setApiError] = useState("")
   const [scanProgress, setScanProgress] = useState(0)
   const [currentProofIndex, setCurrentProofIndex] = useState(0)
-  const [timeLeft, setTimeLeft] = useState(5 * 60) // 5 minutos em segundos
-  const [ctaVariant, setCTAVariant] = useState(0) // Para teste A/B
+  const [timeLeft, setTimeLeft] = useState(5 * 60) // 5 minutes in seconds
+  const [ctaVariant, setCTAVariant] = useState(0) // For A/B testing
   const [showExitPopup, setShowExitPopup] = useState(false)
   const [chatMessageIndex, setChatMessageIndex] = useState(0)
   const [isTransitioning, setIsTransitioning] = useState(false)
-  const [protectedFamilies, setProtectedFamilies] = useState(342)
+  const [protectedFamilies, setProtectedFamilies] = useState(2847)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [showBumpOffer, setShowBumpOffer] = useState(false)
   const [orderBumpSelected, setOrderBumpSelected] = useState(false)
+  // Tracks the dial-code of the country chosen in the phone input
+  const [selectedDialCode, setSelectedDialCode] = useState("+1") // default US
   const [purchaseData, setPurchaseData] = useState<PurchaseData>({
     mainProduct: true,
     orderBump: false,
@@ -99,11 +102,11 @@ export default function SafeKidAIFunil() {
     totalAmount: 27,
   })
   const [scanResults, setScanResults] = useState({
-    telegram: { status: "safe", message: "Sem riscos detectados" },
-    instagram: { status: "warning", message: "Tentativa de aliciamento detectada" },
-    snapchat: { status: "danger", message: "Interação com perfil desconhecido" },
-    tiktok: { status: "danger", message: "Conteúdo impróprio visualizado" },
-    whatsapp: { status: "danger", message: "Conversa suspeita identificada" },
+    telegram: { status: "safe", message: "No risks detected" },
+    instagram: { status: "warning", message: "Grooming attempt detected" },
+    snapchat: { status: "danger", message: "Interaction with unknown profile" },
+    tiktok: { status: "danger", message: "Inappropriate content viewed" },
+    whatsapp: { status: "danger", message: "Suspicious conversation identified" },
   })
 
   const nameInputRef = useRef<HTMLInputElement>(null)
@@ -150,98 +153,98 @@ export default function SafeKidAIFunil() {
     },
   ]
 
-  // Prova social dinâmica
+  // Dynamic social proof
   const socialProofs = [
-    "👩‍🦰 Mãe de Lucas desbloqueou o relatório há 2 minutos",
-    "🧑 João (RJ) ativou proteção agora mesmo",
-    "👩 Ana (SP) descobriu atividade suspeita há 1 minuto",
-    "🧔 Carlos (MG) protegeu sua filha há 3 minutos",
-    "👩‍🦱 Maria (PR) desbloqueou análise completa agora",
+    "👩‍🦰 Sarah from Texas unlocked her report 2 minutes ago",
+    "🧑 Mike (CA) activated protection right now",
+    "👩 Jennifer (FL) discovered suspicious activity 1 minute ago",
+    "🧔 David (NY) protected his daughter 3 minutes ago",
+    "👩‍🦱 Lisa (TX) unlocked complete analysis now",
   ]
 
-  // Notificações em tempo real
+  // Real-time notifications
   const realTimeNotifications = [
-    "👩‍🦰 Mãe de Lucas acabou de desbloquear",
-    "👀 Nova verificação concluída há 1 min",
-    "🧑 João (RJ) ativou proteção agora mesmo",
-    "👩 Ana descobriu atividade suspeita",
-    "🔍 Relatório gerado há 30 segundos",
+    "👩‍🦰 Sarah from Texas just unlocked her report",
+    "👀 New verification completed 1 min ago",
+    "🧑 Mike (CA) activated protection right now",
+    "👩 Jennifer discovered suspicious activity",
+    "🔍 Report generated 30 seconds ago",
   ]
 
-  // Simulação de conversa suspeita
+  // Suspicious chat simulation
   const suspiciousChat = [
-    { sender: "stranger", message: "Você parece mais madura que sua idade...", time: "19:03" },
-    { sender: "child", message: "Sério? Rs", time: "19:04" },
-    { sender: "stranger", message: "Vamos manter isso entre nós, ok?", time: "19:05" },
-    { sender: "stranger", message: "Você tem WhatsApp? Podemos conversar melhor lá", time: "19:06" },
-    { sender: "child", message: "Não sei...", time: "19:07" },
-    { sender: "stranger", message: "Confie em mim, sou diferente dos outros", time: "19:08" },
+    { sender: "stranger", message: "You seem more mature than your age...", time: "7:03 PM" },
+    { sender: "child", message: "Really? Lol", time: "7:04 PM" },
+    { sender: "stranger", message: "Let's keep this between us, okay?", time: "7:05 PM" },
+    { sender: "stranger", message: "Do you have WhatsApp? We can chat better there", time: "7:06 PM" },
+    { sender: "child", message: "I don't know...", time: "7:07 PM" },
+    { sender: "stranger", message: "Trust me, I'm different from the others", time: "7:08 PM" },
   ]
 
-  // Depoimentos reais
+  // Real testimonials
   const realTestimonials = [
     {
-      name: "Carlos M.",
-      child: "pai da Isadora",
-      text: "Nunca pensei que minha filha pudesse estar conversando com um estranho assim. O SafeKid AI me mostrou coisas que eu jamais imaginava.",
+      name: "Michael R.",
+      child: "father of Emma",
+      text: "I never thought my daughter could be talking to a stranger like this. SafeKid AI showed me things I never imagined.",
       avatar: "/testimonials/carlos-testimonial.jpg",
       verified: true,
     },
     {
-      name: "Mariana R.",
-      child: "mãe da Laura",
-      text: "Eu achava que minha filha estava segura. Quando vi o que estavam mandando pra ela no Snapchat, entrei em choque. Ainda bem que descobri a tempo.",
+      name: "Sarah M.",
+      child: "mother of Olivia",
+      text: "I thought my daughter was safe. When I saw what they were sending her on Snapchat, I was shocked. Thank God I found out in time.",
       avatar: "/testimonials/mariana-testimonial.jpg",
       verified: true,
     },
   ]
 
-  // Comentários estilo rede social
+  // Social media style comments
   const socialComments = [
     {
-      name: "Rodrigo M.",
-      time: "há 2 horas",
+      name: "Robert K.",
+      time: "2 hours ago",
       comment:
-        "Usei ontem e fiquei em choque. O que vi no TikTok da minha filha me fez chorar. Obrigado por essa ferramenta.",
+        "Used this yesterday and was shocked. What I saw on my daughter's TikTok made me cry. Thank you for this tool.",
       avatar: "/testimonials/rodrigo-comment.jpg",
     },
     {
-      name: "Patricia S.",
-      time: "há 4 horas",
-      comment: "Meu filho estava sendo manipulado no Discord e eu não sabia. Essa análise salvou nossa família.",
+      name: "Amanda S.",
+      time: "4 hours ago",
+      comment: "My son was being manipulated on Discord and I had no idea. This analysis saved our family.",
       avatar: "/testimonials/patricia-comment.jpg",
     },
   ]
 
-  // Variações de CTA para teste A/B
+  // CTA variations for A/B testing
   const ctaVariants = [
-    { text: "🔓 Desbloquear Relatório Completo", icon: Lock },
-    { text: "🔒 Proteger Meu Filho Agora", icon: Shield },
-    { text: "🔍 Ver Relatório Urgente", icon: Eye },
-    { text: "⚡ Desbloquear em Tempo Real", icon: AlertTriangle },
+    { text: "🔓 Unlock Complete Report", icon: Lock },
+    { text: "🔒 Protect My Child Now", icon: Shield },
+    { text: "🔍 View Urgent Report", icon: Eye },
+    { text: "⚡ Unlock Real-Time Access", icon: AlertTriangle },
   ]
 
   // FAQ Data
   const faqData = [
     {
-      question: "Isso funciona com qualquer rede social?",
+      question: "Does this work with any social media platform?",
       answer:
-        "Sim! Nossa tecnologia analisa Instagram, TikTok, WhatsApp, Telegram, Snapchat, Discord e mais de 15 plataformas digitais onde seu filho pode estar interagindo.",
+        "Yes! Our technology analyzes Instagram, TikTok, WhatsApp, Telegram, Snapchat, Discord and over 15 digital platforms where your child might be interacting.",
     },
     {
-      question: "É seguro para meus dados?",
+      question: "Is my data secure?",
       answer:
-        "Absolutamente. Utilizamos criptografia de nível bancário e seguimos rigorosamente a LGPD. Seus dados são processados de forma segura e nunca compartilhados com terceiros.",
+        "Absolutely. We use bank-level encryption and strictly follow COPPA and privacy regulations. Your data is processed securely and never shared with third parties.",
     },
     {
-      question: "É uma assinatura?",
+      question: "Is this a subscription?",
       answer:
-        "Não! É um pagamento único de $27 que inclui o relatório completo + 30 dias de monitoramento gratuito. Sem renovação automática ou taxas ocultas.",
+        "No! It's a one-time payment of $27 that includes the complete report + 30 days of free monitoring. No auto-renewal or hidden fees.",
     },
     {
-      question: "O que acontece após o pagamento?",
+      question: "What happens after payment?",
       answer:
-        "Você recebe acesso imediato ao relatório completo por e-mail e WhatsApp. O monitoramento contínuo começa automaticamente e você recebe alertas em tempo real.",
+        "You receive immediate access to the complete report via email and text message. Continuous monitoring begins automatically and you receive real-time alerts.",
     },
   ]
 
@@ -285,7 +288,7 @@ export default function SafeKidAIFunil() {
     }
   }, [childName, whatsappNumber])
 
-  // Detectar tentativa de saída
+  // Detect exit attempt
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (currentStep === "conversion" || currentStep === "final" || currentStep === "checkout") {
@@ -326,7 +329,7 @@ export default function SafeKidAIFunil() {
     }
   }, [currentStep])
 
-  // Contador de famílias protegidas
+  // Protected families counter
   useEffect(() => {
     if (currentStep === "final" || currentStep === "checkout") {
       const interval = setInterval(() => {
@@ -336,7 +339,7 @@ export default function SafeKidAIFunil() {
     }
   }, [currentStep])
 
-  // Notificações em tempo real
+  // Real-time notifications
   useEffect(() => {
     if (currentStep === "final" || currentStep === "checkout") {
       const interval = setInterval(() => {
@@ -361,7 +364,7 @@ export default function SafeKidAIFunil() {
     }
   }, [currentStep])
 
-  // Rotação da prova social
+  // Social proof rotation
   useEffect(() => {
     if (currentStep === "scanning") {
       const interval = setInterval(() => {
@@ -371,7 +374,7 @@ export default function SafeKidAIFunil() {
     }
   }, [currentStep, socialProofs.length])
 
-  // Animação da conversa suspeita
+  // Suspicious chat animation
   useEffect(() => {
     if (currentStep === "chat-simulation") {
       const interval = setInterval(() => {
@@ -387,77 +390,96 @@ export default function SafeKidAIFunil() {
     }
   }, [currentStep])
 
-  // Função para buscar foto do WhatsApp
- const fetchWhatsAppProfile = useCallback(async (phone: string, countryCode: string) => {
-  if (!phone || phone.replace(/\D/g, "").length < 8) return;
+  // Function to fetch WhatsApp photo
+  const fetchWhatsAppProfile = useCallback(async (phone: string, countryCode: string) => {
+    if (!phone || phone.replace(/\D/g, "").length < 8) return
 
-  setIsLoadingProfile(true);
-  setApiError("");
-  setProfileLoaded(false);
+    setIsLoadingProfile(true)
+    setApiError("")
+    setProfileLoaded(false)
 
-  try {
-    // Garante que o número inclua o código do país
-    let formattedPhone = phone.replace(/\D/g, "");
-    if (countryCode && !formattedPhone.startsWith(countryCode.replace("+", ""))) {
-      formattedPhone = countryCode.replace("+", "") + formattedPhone;
-    }
-
-    const response = await fetch("/api/whatsapp-photo", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ phone: formattedPhone }),
-    });
-
-    let data: WhatsAppProfileResponse;
     try {
-      data = await response.json();
-    } catch {
-      data = { success: false, error: "Resposta inválida do servidor" };
-    }
+      // Garante que o número inclua o código do país
+      let formattedPhone = phone.replace(/\D/g, "")
+      if (countryCode && !formattedPhone.startsWith(countryCode.replace("+", ""))) {
+        formattedPhone = countryCode.replace("+", "") + formattedPhone
+      }
 
-    if (!response.ok || !data?.success) {
-      console.error("Erro na API interna:", data?.error || "Resposta não-OK", response.status);
-      setProfileImage("");
-      setIsProfilePrivate(true);
-      setApiError(data?.error || "Não foi possível carregar a foto do perfil");
-      setProfileLoaded(true);
-      return;
-    }
+      // Validação adicional: mínimo de 10 dígitos
+      if (formattedPhone.length < 10) {
+        console.error("Número inválido: menos de 10 dígitos")
+        setProfileImage("")
+        setIsProfilePrivate(true)
+        setApiError("Número de telefone inválido: deve conter pelo menos 10 dígitos")
+        setProfileLoaded(true)
+        return
+      }
 
-    setProfileImage(data.result || "");
-    setIsProfilePrivate(!!data.is_photo_private);
-    setApiError("");
-    setProfileLoaded(true);
-  } catch (error: any) {
-    console.error("Erro ao buscar foto:", error.message);
-    setProfileImage("");
-    setIsProfilePrivate(true);
-    setApiError("Erro ao conectar com o servidor");
-    setProfileLoaded(true);
-  } finally {
-    setIsLoadingProfile(false);
-  }
-}, []);
+      console.log("📱 Enviando número para API:", formattedPhone)
+
+      const response = await fetch("/api/whatsapp-photo", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ phone: formattedPhone }),
+      })
+
+      let data: WhatsAppProfileResponse
+      try {
+        data = await response.json()
+      } catch {
+        data = { success: false, error: "Resposta inválida do servidor" }
+      }
+
+      if (!response.ok || !data?.success) {
+        console.error("Erro na API interna:", data?.error || "Resposta não-OK", response.status)
+        setProfileImage("")
+        setIsProfilePrivate(true)
+        setApiError(data?.error || "Não foi possível carregar a foto do perfil. Tente novamente mais tarde.")
+        setProfileLoaded(true)
+        return
+      }
+
+      setProfileImage(data.result || "")
+      setIsProfilePrivate(!!data.is_photo_private)
+      setApiError("")
+      setProfileLoaded(true)
+    } catch (error: any) {
+      console.error("Erro ao buscar foto:", error.message)
+      setProfileImage("")
+      setIsProfilePrivate(true)
+      setApiError("Erro ao consultar o perfil do WhatsApp. Tente outro número ou aguarde alguns minutos.")
+      setProfileLoaded(true)
+    } finally {
+      setIsLoadingProfile(false)
+    }
+  }, [])
 
   // Handle phone number change
+  const [debouncedPhone] = useDebounce(whatsappNumber, 500) // Debounce de 500ms
+
+  // Called by CountryPhoneInput
   const handlePhoneChange = (value: string, country: any, isValid: boolean) => {
-  setWhatsappNumber(value);
-  setIsPhoneValid(isValid);
-
-  const cleanPhone = value.replace(/\D/g, "");
-  if (isValid && cleanPhone.length >= 8) {
-    fetchWhatsAppProfile(cleanPhone, country?.dialCode || "+55");
-  } else {
-    setProfileImage("");
-    setIsProfilePrivate(false);
-    setApiError("");
-    setProfileLoaded(false);
+    setWhatsappNumber(value)
+    setIsPhoneValid(isValid)
+    setSelectedDialCode(country?.dialCode || "+1")
   }
-};
 
-  // Função para verificar se pode avançar
+  // Dispara fetchWhatsAppProfile com debounce
+  useEffect(() => {
+    const cleanPhone = debouncedPhone.replace(/\D/g, "")
+    if (isPhoneValid && cleanPhone.length >= 8) {
+      fetchWhatsAppProfile(cleanPhone, selectedDialCode)
+    } else {
+      setProfileImage("")
+      setIsProfilePrivate(false)
+      setApiError("")
+      setProfileLoaded(false)
+    }
+  }, [debouncedPhone, isPhoneValid, fetchWhatsAppProfile, selectedDialCode])
+
+  // Function to check if can proceed
   const canProceed = () => {
     const name = nameInputRef.current?.value.trim() || childName.trim()
     const hasValidName = name && name.length >= 2
@@ -467,7 +489,7 @@ export default function SafeKidAIFunil() {
     return hasValidName && hasValidPhone && isProfileReady
   }
 
-  // Função para iniciar análise
+  // Function to start analysis
   const handleStartAnalysis = async () => {
     if (!canProceed()) return
 
@@ -484,7 +506,7 @@ export default function SafeKidAIFunil() {
     setIsTransitioning(false)
   }
 
-  // Manipulador de tecla Enter
+  // Enter key handler
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && canProceed()) {
       e.preventDefault()
@@ -543,7 +565,7 @@ export default function SafeKidAIFunil() {
     else setCurrentStep("thank-you")
   }
 
-  // Animação de escaneamento
+  // Scanning animation
   useEffect(() => {
     if (currentStep === "scanning") {
       setScanProgress(0)
@@ -561,7 +583,7 @@ export default function SafeKidAIFunil() {
     }
   }, [currentStep])
 
-  // Auto-scroll do carrossel de notícias
+  // Auto-scroll news carousel
   useEffect(() => {
     if (currentStep === "headlines") {
       const interval = setInterval(() => {
@@ -579,23 +601,23 @@ export default function SafeKidAIFunil() {
     setCurrentNewsIndex((prev) => (prev - 1 + newsCards.length) % newsCards.length)
   }
 
-  // Formatação do timer
+  // Timer formatting
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
   }
 
-  // Estatística local
+  // Local statistic
   const getLocalStatistic = () => {
-    return "⚠️ Só este mês, 57 casos foram registrados em Pindamonhangaba."
+    return "⚠️ This month alone, 127 cases were reported in the United States."
   }
 
   // Loading overlay component
   const LoadingOverlay = () => (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
       <div className="bg-white rounded-2xl p-6">
-        <LoadingSpinner message="Carregando verificação..." />
+        <LoadingSpinner message="Loading verification..." />
       </div>
     </div>
   )
@@ -630,7 +652,7 @@ export default function SafeKidAIFunil() {
       {/* Floating Notifications */}
       <FloatingNotifications />
 
-      {/* Pop-up de Urgência para Abandono */}
+      {/* Exit Urgency Popup */}
       <AnimatePresence>
         {showExitPopup && (
           <motion.div
@@ -648,21 +670,21 @@ export default function SafeKidAIFunil() {
               <div className="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
                 <AlertTriangle className="w-8 h-8 text-white" />
               </div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">⚠️ {childName} ainda pode estar em perigo</h3>
-              <p className="text-gray-600 mb-6">Você quer mesmo sair sem visualizar o relatório completo?</p>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">⚠️ {childName} may still be in danger</h3>
+              <p className="text-gray-600 mb-6">Are you sure you want to leave without viewing the complete report?</p>
               <div className="flex gap-3">
                 <Button
                   onClick={() => setShowExitPopup(false)}
                   className="flex-1 bg-gradient-to-r from-[#885EFF] to-[#1FE3C2] text-white"
                 >
-                  PROTEGER AGORA
+                  PROTECT NOW
                 </Button>
                 <Button
                   onClick={() => window.close()}
                   variant="outline"
                   className="flex-1 border-gray-300 text-gray-600"
                 >
-                  SAIR SEM VER
+                  LEAVE WITHOUT VIEWING
                 </Button>
               </div>
             </motion.div>
@@ -671,7 +693,7 @@ export default function SafeKidAIFunil() {
       </AnimatePresence>
 
       <AnimatePresence mode="wait">
-        {/* Tela de Boas-Vindas */}
+        {/* Welcome Screen */}
         {currentStep === "welcome" && (
           <motion.div
             key="welcome"
@@ -716,7 +738,7 @@ export default function SafeKidAIFunil() {
                 </div>
                 <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">SafeKid AI</h1>
                 <p className="text-[#1FE3C2] text-sm md:text-base font-medium">
-                  Proteção digital em tempo real para pais conscientes
+                  Real-time digital protection for concerned parents
                 </p>
               </motion.div>
 
@@ -728,12 +750,12 @@ export default function SafeKidAIFunil() {
                 className="text-center mb-8"
               >
                 <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-4 leading-tight">
-                  Você sabe com quem seu filho está falando
-                  <span className="text-[#FF4B4B]"> agora?</span>
+                  Do you know who your child is talking to
+                  <span className="text-[#FF4B4B]"> right now?</span>
                 </h2>
                 <p className="text-lg md:text-xl text-gray-300 mb-6 max-w-2xl mx-auto">
-                  Mais de <span className="text-[#FFCE00] font-bold">73% dos pais</span> não monitoram as redes sociais
-                  dos filhos
+                  Over <span className="text-[#FFCE00] font-bold">73% of parents</span> don't monitor their children's
+                  social media
                 </p>
               </motion.div>
 
@@ -775,176 +797,179 @@ export default function SafeKidAIFunil() {
                   className="bg-gradient-to-r from-[#885EFF] to-[#1FE3C2] hover:from-[#7B52FF] hover:to-[#1BD4B8] text-white font-bold py-4 px-8 text-lg rounded-xl shadow-2xl btn-enhanced w-full max-w-md"
                 >
                   <Shield className="w-6 h-6 mr-2" />
-                  Iniciar Verificação Gratuita
+                  Start Free Verification
                 </Button>
                 <p className="text-gray-400 text-sm mt-4">
-                  🔒 100% Confidencial • ⚡ Análise em tempo real • ✅ Usado por +50.000 famílias
+                  🔒 100% Confidential • ⚡ Real-time analysis • ✅ Used by 50,000+ families
                 </p>
               </motion.div>
             </div>
           </motion.div>
         )}
 
-        {/* Formulário de Coleta */}
+        {/* Data Collection Form */}
         {currentStep === "form" && (
           <motion.div
-  key="form"
-  initial={{ opacity: 0 }}
-  animate={{ opacity: 1 }}
-  exit={{ opacity: 0 }}
-  className="min-h-screen relative overflow-hidden flex items-center justify-center"
-  style={{
-    background: "linear-gradient(135deg, #0B1A30 0%, #1a2332 50%, #0B1A30 100%)",
-  }}
->
-  {/* Background Image */}
-  <div
-    className="absolute inset-0 opacity-10"
-    style={{
-      backgroundImage: "url('/background/tech-kids.jpeg')",
-      backgroundSize: "cover",
-      backgroundPosition: "center",
-      filter: "blur(2px)",
-    }}
-  />
-
-  <div className="relative z-10 w-full max-w-md mx-auto px-4">
-    <Card className="bg-white/95 backdrop-blur-sm border-0 shadow-2xl rounded-2xl">
-      <CardContent className="p-8">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-[#885EFF] to-[#1FE3C2] rounded-xl mb-4">
-            <Wifi className="w-8 h-8 text-white" />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Análise de Segurança Digital</h2>
-          <p className="text-gray-600">Insira os dados para iniciar a verificação forense</p>
-        </div>
-
-        <form ref={formRef} className="space-y-6" onKeyDown={handleKeyDown}>
-          {/* Nome do filho */}
-          <div>
-            <label className="block text-gray-700 font-semibold mb-2">Nome completo do seu filho(a)</label>
-            <Input
-              ref={nameInputRef}
-              type="text"
-              placeholder="Digite o nome completo"
-              className="input-enhanced h-12 text-base"
-              defaultValue={childName}
-              onChange={(e) => setChildName(e.target.value)}
-              required
-            />
-          </div>
-
-          {/* Número do filho */}
-          <div>
-            <label className="block text-gray-700 font-semibold mb-2">Número do filho(a)</label>
-            <CountryPhoneInput
-              value={whatsappNumber}
-              onChange={handlePhoneChange}
-              placeholder="Digite o número"
-              className="text-base"
+            key="form"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="min-h-screen relative overflow-hidden flex items-center justify-center"
+            style={{
+              background: "linear-gradient(135deg, #0B1A30 0%, #1a2332 50%, #0B1A30 100%)",
+            }}
+          >
+            {/* Background Image */}
+            <div
+              className="absolute inset-0 opacity-10"
+              style={{
+                backgroundImage: "url('/background/tech-kids.jpeg')",
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+                filter: "blur(2px)",
+              }}
             />
 
-            {/* Exibição da foto de perfil */}
-            {whatsappNumber.replace(/\D/g, "").length >= 8 && (
-              <div className="mt-4 p-4 bg-gray-50 rounded-xl border">
-                <p className="text-sm font-semibold text-gray-700 mb-3 text-center">
-                  {isLoadingProfile
-                    ? "Buscando foto de perfil..."
-                    : profileLoaded
-                    ? profileImage
-                      ? "Foto de perfil encontrada"
-                      : "Foto de perfil não disponível"
-                    : "Aguardando número válido..."}
-                </p>
-
-                <div className="flex justify-center">
-                  {isLoadingProfile ? (
-                    <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center">
-                      <LoadingSpinner size="sm" message="" />
+            <div className="relative z-10 w-full max-w-md mx-auto px-4">
+              <Card className="bg-white/95 backdrop-blur-sm border-0 shadow-2xl rounded-2xl">
+                <CardContent className="p-8">
+                  {/* Header */}
+                  <div className="text-center mb-8">
+                    <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-[#885EFF] to-[#1FE3C2] rounded-xl mb-4">
+                      <Wifi className="w-8 h-8 text-white" />
                     </div>
-                  ) : (
-                    <div className="relative">
-                      <img
-                        src={
-                          profileImage ||
-                          (profileLoaded
-                            ? "https://media.istockphoto.com/id/1337144146/vector/default-avatar-profile-icon-vector.jpg?s=612x612&w=0&k=20&c=BIbFwuv7FxTWvh5S3vB6bkT0Qv8Vn8N5Ffseq84ClGI="
-                            : `https://ui-avatars.com/api/?name=User&background=885EFF&color=fff&size=200`)
-                        }
-                        alt="Foto de perfil"
-                        className="w-20 h-20 rounded-full border-4 border-[#885EFF] shadow-lg object-cover"
-                        onError={(e) => {
-                          e.currentTarget.src = "https://media.istockphoto.com/id/1337144146/vector/default-avatar-profile-icon-vector.jpg?s=612x612&w=0&k=20&c=BIbFwuv7FxTWvh5S3vB6bkT0Qv8Vn8N5Ffseq84ClGI=";
-                        }}
+                    <h2 className="text-2xl font-bold text-gray-800 mb-2">Digital Security Analysis</h2>
+                    <p className="text-gray-600">Enter details to start forensic verification</p>
+                  </div>
+
+                  <form ref={formRef} className="space-y-6" onKeyDown={handleKeyDown}>
+                    {/* Child's name */}
+                    <div>
+                      <label className="block text-gray-700 font-semibold mb-2">Your child's full name</label>
+                      <Input
+                        ref={nameInputRef}
+                        type="text"
+                        placeholder="Enter full name"
+                        className="input-enhanced h-12 text-base"
+                        defaultValue={childName}
+                        onChange={(e) => setChildName(e.target.value)}
+                        required
                       />
-                      {(isProfilePrivate || !profileImage) && profileLoaded && (
-                        <div className="absolute -bottom-1 -right-1 bg-red-500 rounded-full p-1">
-                          <Lock className="w-3 h-3 text-white" />
+                    </div>
+
+                    {/* Child's number */}
+                    <div>
+                      <label className="block text-gray-700 font-semibold mb-2">Your child's phone number</label>
+                      <CountryPhoneInput
+                        value={whatsappNumber}
+                        onChange={handlePhoneChange}
+                        placeholder="Enter phone number"
+                        className="text-base"
+                      />
+
+                      {/* Profile photo display */}
+                      {whatsappNumber.replace(/\D/g, "").length >= 8 && (
+                        <div className="mt-4 p-4 bg-gray-50 rounded-xl border">
+                          <p className="text-sm font-semibold text-gray-700 mb-3 text-center">
+                            {isLoadingProfile
+                              ? "Searching for profile photo..."
+                              : profileLoaded
+                                ? profileImage
+                                  ? "Profile photo found"
+                                  : "Profile photo not available"
+                                : "Waiting for valid number..."}
+                          </p>
+
+                          <div className="flex justify-center">
+                            {isLoadingProfile ? (
+                              <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center">
+                                <LoadingSpinner size="sm" message="" />
+                              </div>
+                            ) : (
+                              <div className="relative">
+                                <img
+                                  src={
+                                    profileImage ||
+                                    (profileLoaded
+                                      ? "https://media.istockphoto.com/id/1337144146/vector/default-avatar-profile-icon-vector.jpg?s=612x612&w=0&k=20&c=BIbFwuv7FxTWvh5S3vB6bkT0Qv8Vn8N5Ffseq84ClGI="
+                                      : `https://ui-avatars.com/api/?name=${encodeURIComponent(childName || "User")}&background=885EFF&color=fff&size=200`)
+                                  }
+                                  alt="Profile photo"
+                                  className="w-20 h-20 rounded-full border-4 border-[#885EFF] shadow-lg object-cover"
+                                  onError={(e) => {
+                                    e.currentTarget.src =
+                                      "https://media.istockphoto.com/id/1337144146/vector/default-avatar-profile-icon-vector.jpg?s=612x612&w=0&k=20&c=BIbFwuv7FxTWvh5S3vB6bkT0Qv8Vn8N5Ffseq84ClGI="
+                                  }}
+                                />
+                                {(isProfilePrivate || !profileImage) && profileLoaded && (
+                                  <div className="absolute -bottom-1 -right-1 bg-red-500 rounded-full p-1">
+                                    <Lock className="w-3 h-3 text-white" />
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {apiError && profileLoaded && (
+                            <p className="text-red-500 text-xs text-center mt-2">{apiError}</p>
+                          )}
+                          {!apiError && profileLoaded && profileImage && (
+                            <p className="text-green-600 text-xs text-center mt-2 font-medium">
+                              ✅ Profile found successfully!
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
-                  )}
-                </div>
 
-                {apiError && profileLoaded && (
-                  <p className="text-red-500 text-xs text-center mt-2">{apiError}</p>
-                )}
-                {!apiError && profileLoaded && profileImage && (
-                  <p className="text-green-600 text-xs text-center mt-2 font-medium">✅ Perfil encontrado com sucesso!</p>
-                )}
-              </div>
-            )}
-          </div>
+                    {/* Submit Button */}
+                    <Button
+                      type="button"
+                      onClick={handleStartAnalysis}
+                      disabled={!canProceed() || isTransitioning}
+                      className="w-full bg-gradient-to-r from-[#885EFF] to-[#1FE3C2] hover:from-[#7B52FF] hover:to-[#1BD4B8] text-white font-bold py-4 text-lg rounded-xl btn-enhanced disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                    >
+                      {isLoadingProfile || isTransitioning ? (
+                        <>
+                          <LoadingSpinner size="sm" message="" />
+                          <span className="ml-2">
+                            {isTransitioning ? "Starting analysis..." : "Verifying profile..."}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="w-5 h-5 mr-2" />
+                          Start Forensic Analysis
+                        </>
+                      )}
+                    </Button>
 
-          {/* Submit Button */}
-          <Button
-            type="button"
-            onClick={handleStartAnalysis}
-            disabled={!canProceed() || isTransitioning}
-            className="w-full bg-gradient-to-r from-[#885EFF] to-[#1FE3C2] hover:from-[#7B52FF] hover:to-[#1BD4B8] text-white font-bold py-4 text-lg rounded-xl btn-enhanced disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-          >
-            {isLoadingProfile || isTransitioning ? (
-              <>
-                <LoadingSpinner size="sm" message="" />
-                <span className="ml-2">
-                  {isTransitioning ? "Iniciando análise..." : "Verificando perfil..."}
-                </span>
-              </>
-            ) : (
-              <>
-                <Eye className="w-5 h-5 mr-2" />
-                Iniciar Análise Forense
-              </>
-            )}
-          </Button>
+                    {canProceed() && !isLoadingProfile && !isTransitioning && (
+                      <p className="text-green-600 text-sm text-center font-medium">
+                        ✅ Press Enter or click the button to continue
+                      </p>
+                    )}
+                  </form>
 
-          {canProceed() && !isLoadingProfile && !isTransitioning && (
-            <p className="text-green-600 text-sm text-center font-medium">
-              ✅ Pressione Enter ou clique no botão para continuar
-            </p>
-          )}
-        </form>
-
-        <div className="mt-6 text-center">
-          <div className="flex items-center justify-center gap-4 text-xs text-gray-500">
-            <div className="flex items-center gap-1">
-              <Lock className="w-4 h-4" />
-              <span>Criptografia SSL</span>
+                  <div className="mt-6 text-center">
+                    <div className="flex items-center justify-center gap-4 text-xs text-gray-500">
+                      <div className="flex items-center gap-1">
+                        <Lock className="w-4 h-4" />
+                        <span>SSL Encryption</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Shield className="w-4 h-4" />
+                        <span>COPPA Protected</span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-            <div className="flex items-center gap-1">
-              <Shield className="w-4 h-4" />
-              <span>Proteção LGPD</span>
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  </div>
-</motion.div>
+          </motion.div>
         )}
 
-        {/* Escaneamento Forense */}
+        {/* Forensic Scanning */}
         {currentStep === "scanning" && (
           <motion.div
             key="scanning"
@@ -986,16 +1011,16 @@ export default function SafeKidAIFunil() {
                     <img
                       src={
                         profileImage ||
-                        `https://ui-avatars.com/api/?name=${childName || "User"}&background=885EFF&color=fff&size=200`
+                        `https://ui-avatars.com/api/?name=${encodeURIComponent(childName || "User")}&background=885EFF&color=fff&size=200`
                       }
                       alt="Profile"
                       className="w-24 h-24 rounded-2xl mx-auto border-4 border-[#1FE3C2] shadow-lg"
                     />
                   </div>
 
-                  <h2 className="text-3xl font-bold text-white mb-4">ANÁLISE FORENSE EM ANDAMENTO</h2>
+                  <h2 className="text-3xl font-bold text-white mb-4">FORENSIC ANALYSIS IN PROGRESS</h2>
                   <p className="text-[#1FE3C2] mb-8 text-lg">
-                    Escaneando perfil de <strong>{childName}</strong>...
+                    Scanning <strong>{childName}</strong>'s profile...
                   </p>
 
                   {/* Progress Bar */}
@@ -1003,9 +1028,9 @@ export default function SafeKidAIFunil() {
                     <Progress value={scanProgress} className="h-4 bg-gray-800 rounded-full overflow-hidden" />
                   </div>
 
-                  <p className="text-white text-xl font-bold mb-8">{Math.round(scanProgress)}% concluído</p>
+                  <p className="text-white text-xl font-bold mb-8">{Math.round(scanProgress)}% complete</p>
 
-                  {/* Prova Social Dinâmica */}
+                  {/* Dynamic Social Proof */}
                   <motion.div
                     key={currentProofIndex}
                     initial={{ opacity: 0, y: 20 }}
@@ -1063,7 +1088,7 @@ export default function SafeKidAIFunil() {
 
                   <div className="flex items-center justify-center gap-3 text-[#1FE3C2] text-sm">
                     <Shield className="w-5 h-5" />
-                    <span>Conexão segura e criptografada</span>
+                    <span>Secure and encrypted connection</span>
                   </div>
                 </CardContent>
               </Card>
@@ -1071,7 +1096,7 @@ export default function SafeKidAIFunil() {
           </motion.div>
         )}
 
-        {/* Nova Seção: Simulação de Conversa Suspeita */}
+        {/* New Section: Suspicious Chat Simulation */}
         {currentStep === "chat-simulation" && (
           <motion.div
             key="chat-simulation"
@@ -1100,9 +1125,9 @@ export default function SafeKidAIFunil() {
                 <div className="inline-flex items-center justify-center w-16 h-16 bg-red-500 rounded-full mb-4">
                   <MessageCircle className="w-8 h-8 text-white" />
                 </div>
-                <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">🚨 Conversa Suspeita Detectada</h2>
+                <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">🚨 Suspicious Conversation Detected</h2>
                 <p className="text-lg text-red-400 mb-6">
-                  Exemplo do tipo de conversa encontrada no perfil de <strong>{childName}</strong>
+                  Example of the type of conversation found in <strong>{childName}</strong>'s profile
                 </p>
               </motion.div>
 
@@ -1120,8 +1145,8 @@ export default function SafeKidAIFunil() {
                       <span className="text-white text-sm">?</span>
                     </div>
                     <div>
-                      <h4 className="text-white font-semibold">Usuário Desconhecido</h4>
-                      <p className="text-gray-400 text-xs">Online agora</p>
+                      <h4 className="text-white font-semibold">Unknown User</h4>
+                      <p className="text-gray-400 text-xs">Online now</p>
                     </div>
                   </div>
 
@@ -1157,7 +1182,7 @@ export default function SafeKidAIFunil() {
                     onClick={() => handleStepTransition("conversion")}
                     className="bg-gradient-to-r from-[#FF4B4B] to-[#FF6B6B] hover:from-[#FF3B3B] hover:to-[#FF5B5B] text-white font-bold py-3 px-6 rounded-xl"
                   >
-                    Continuar Análise →
+                    Continue Analysis →
                   </Button>
                 </motion.div>
               )}
@@ -1169,23 +1194,22 @@ export default function SafeKidAIFunil() {
                 transition={{ delay: 0.4 }}
                 className="bg-red-500/10 border-2 border-red-500 rounded-xl p-6 max-w-2xl mx-auto text-center"
               >
-                <h3 className="text-xl font-bold text-red-400 mb-2">⚠️ PADRÃO DE ALICIAMENTO IDENTIFICADO</h3>
+                <h3 className="text-xl font-bold text-red-400 mb-2">⚠️ GROOMING PATTERN IDENTIFIED</h3>
                 <p className="text-white mb-4">
-                  Esta é apenas uma amostra. O relatório completo contém análise detalhada de todas as conversas
-                  suspeitas.
+                  This is just a sample. The complete report contains detailed analysis of all suspicious conversations.
                 </p>
                 <div className="text-sm text-gray-300 space-y-1">
-                  <p>• Tentativa de isolamento ("entre nós")</p>
-                  <p>• Elogios inadequados para a idade</p>
-                  <p>• Solicitação de contato privado</p>
-                  <p>• Construção de confiança falsa</p>
+                  <p>• Isolation attempt ("between us")</p>
+                  <p>• Age-inappropriate compliments</p>
+                  <p>• Request for private contact</p>
+                  <p>• False trust building</p>
                 </div>
               </motion.div>
             </div>
           </motion.div>
         )}
 
-        {/* Nova Seção: Headlines */}
+        {/* New Section: Headlines */}
         {currentStep === "headlines" && (
           <motion.div
             key="headlines"
@@ -1212,14 +1236,12 @@ export default function SafeKidAIFunil() {
               {/* Header */}
               <motion.div initial={{ y: -30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="text-center mb-8">
                 <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-4">
-                  Casos Reais que Estamparam Manchetes
+                  Real Cases That Made Headlines
                 </h2>
-                <p className="text-lg md:text-xl text-[#1FE3C2] mb-6">
-                  E mostram por que a SafeKid AI é necessária agora.
-                </p>
+                <p className="text-lg md:text-xl text-[#1FE3C2] mb-6">And show why SafeKid AI is needed now.</p>
               </motion.div>
 
-              {/* Carrossel */}
+              {/* Carousel */}
               <motion.div
                 initial={{ y: 30, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
@@ -1248,7 +1270,7 @@ export default function SafeKidAIFunil() {
                   </div>
                 </div>
 
-                {/* Controles do carrossel */}
+                {/* Carousel controls */}
                 <div className="flex justify-center items-center gap-4 mt-6">
                   <Button
                     variant="outline"
@@ -1282,7 +1304,7 @@ export default function SafeKidAIFunil() {
                 </div>
               </motion.div>
 
-              {/* Informações da notícia atual */}
+              {/* Current news information */}
               <motion.div
                 initial={{ y: 30, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
@@ -1290,7 +1312,7 @@ export default function SafeKidAIFunil() {
                 className="bg-red-500/10 border border-red-500/30 rounded-xl p-6 mb-8 max-w-2xl mx-auto"
               >
                 <div className="flex items-center gap-2 mb-3">
-                  <span className="bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold">CASO REAL</span>
+                  <span className="bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold">REAL CASE</span>
                 </div>
                 <h3 className="text-lg font-bold text-white mb-2">{newsCards[currentNewsIndex].title}</h3>
                 <p className="text-[#FFCE00] font-semibold">
@@ -1309,16 +1331,15 @@ export default function SafeKidAIFunil() {
                   onClick={() => handleStepTransition("form")}
                   className="bg-gradient-to-r from-[#FF4B4B] to-[#FF6B6B] hover:from-[#FF3B3B] hover:to-[#FF5B5B] text-white font-bold py-4 px-8 text-lg rounded-xl shadow-2xl btn-enhanced w-full max-w-md"
                 >
-                  <Shield className="w-6 h-6 mr-2" />
-                  Quero Proteger Agora
+                  <Shield className="w-6 h-6 mr-2" />I Want to Protect Now
                 </Button>
-                <p className="text-gray-400 text-sm mt-4">Não deixe seu filho se tornar a próxima manchete</p>
+                <p className="text-gray-400 text-sm mt-4">Don't let your child become the next headline</p>
               </motion.div>
             </div>
           </motion.div>
         )}
 
-        {/* Tela de Conversão */}
+        {/* Conversion Screen */}
         {currentStep === "conversion" && (
           <motion.div
             key="conversion"
@@ -1345,9 +1366,9 @@ export default function SafeKidAIFunil() {
             <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-black/70" />
 
             <div className="relative z-10 min-h-screen flex flex-col">
-              {/* Container principal com padding adequado */}
+              {/* Main container with adequate padding */}
               <div className="flex-1 container mx-auto px-4 py-6 md:py-12 flex flex-col justify-center max-w-4xl">
-                {/* Timer de Urgência */}
+                {/* Urgency Timer */}
                 <motion.div
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
@@ -1357,14 +1378,14 @@ export default function SafeKidAIFunil() {
                   <div className="bg-red-500/20 border-2 border-red-500 rounded-xl p-4 max-w-md mx-auto">
                     <div className="flex items-center justify-center gap-2 mb-2">
                       <Clock className="w-5 h-5 text-red-400" />
-                      <span className="text-red-400 font-bold">ACESSO LIMITADO</span>
+                      <span className="text-red-400 font-bold">LIMITED ACCESS</span>
                     </div>
                     <div className="text-3xl font-bold text-white">{formatTime(timeLeft)}</div>
-                    <p className="text-red-300 text-sm">Tempo restante para acessar o relatório</p>
+                    <p className="text-red-300 text-sm">Time remaining to access report</p>
                   </div>
                 </motion.div>
 
-                {/* Header Principal */}
+                {/* Main Header */}
                 <motion.div
                   initial={{ y: -30, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
@@ -1372,20 +1393,20 @@ export default function SafeKidAIFunil() {
                   className="text-center mb-6"
                 >
                   <h1 className="text-2xl md:text-4xl lg:text-5xl font-bold text-white mb-4 leading-tight">
-                    🚨 ANÁLISE COMPLETA DE <span className="text-red-400">{childName.toUpperCase()}</span>
+                    🚨 COMPLETE ANALYSIS OF <span className="text-red-400">{childName.toUpperCase()}</span>
                   </h1>
                   <p className="text-lg md:text-xl text-[#FFCE00] font-semibold mb-4">
-                    Foram detectadas <span className="text-red-400 font-bold">4 situações de risco</span> que requerem
-                    atenção imediata
+                    <span className="text-red-400 font-bold">4 risk situations</span> detected that require immediate
+                    attention
                   </p>
                   <div className="text-center">
                     <span className="bg-red-500 text-white px-4 py-2 rounded-full text-sm font-bold">
-                      RELATÓRIO CONFIDENCIAL
+                      CONFIDENTIAL REPORT
                     </span>
                   </div>
                 </motion.div>
 
-                {/* Resumo dos Riscos */}
+                {/* Risk Summary */}
                 <motion.div
                   initial={{ y: 30, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
@@ -1395,29 +1416,29 @@ export default function SafeKidAIFunil() {
                   {[
                     {
                       platform: "Instagram",
-                      risk: "ALTO",
-                      issue: "Tentativa de aliciamento detectada",
+                      risk: "HIGH",
+                      issue: "Grooming attempt detected",
                       color: "border-red-500 bg-red-500/10",
                       icon: "❌",
                     },
                     {
                       platform: "Snapchat",
-                      risk: "CRÍTICO",
-                      issue: "Interação com perfil desconhecido",
+                      risk: "CRITICAL",
+                      issue: "Interaction with unknown profile",
                       color: "border-red-600 bg-red-600/20",
                       icon: "🚨",
                     },
                     {
                       platform: "TikTok",
-                      risk: "ALTO",
-                      issue: "Conteúdo impróprio visualizado",
+                      risk: "HIGH",
+                      issue: "Inappropriate content viewed",
                       color: "border-red-500 bg-red-500/10",
                       icon: "⚠️",
                     },
                     {
                       platform: "WhatsApp",
-                      risk: "CRÍTICO",
-                      issue: "Conversa suspeita identificada",
+                      risk: "CRITICAL",
+                      issue: "Suspicious conversation identified",
                       color: "border-red-600 bg-red-600/20",
                       icon: "🚨",
                     },
@@ -1435,7 +1456,7 @@ export default function SafeKidAIFunil() {
                       </div>
                       <div className="flex items-center gap-2 mb-2">
                         <span className="bg-red-500 text-white px-2 py-1 rounded text-xs font-bold">
-                          RISCO {item.risk}
+                          {item.risk} RISK
                         </span>
                       </div>
                       <p className="text-gray-300 text-sm">{item.issue}</p>
@@ -1443,7 +1464,7 @@ export default function SafeKidAIFunil() {
                   ))}
                 </motion.div>
 
-                {/* Estatística Local */}
+                {/* Local Statistic */}
                 <motion.div
                   initial={{ y: 30, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
@@ -1453,7 +1474,7 @@ export default function SafeKidAIFunil() {
                   <p className="text-yellow-400 font-semibold">{getLocalStatistic()}</p>
                 </motion.div>
 
-                {/* CTA Principal */}
+                {/* CTA Button */}
                 <motion.div
                   initial={{ y: 30, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
@@ -1461,27 +1482,93 @@ export default function SafeKidAIFunil() {
                   className="text-center"
                 >
                   <Button
-                    onClick={() => handleStepTransition("checkout")}
-                    className="bg-gradient-to-r from-[#FF4B4B] to-[#FF6B6B] hover:from-[#FF3B3B] hover:to-[#FF5B5B] text-white font-bold py-4 px-8 text-lg rounded-xl shadow-2xl btn-enhanced w-full max-w-md transform hover:scale-105 transition-all duration-200"
+                    onClick={() => handleStepTransition("final")}
+                    className="bg-gradient-to-r from-[#885EFF] to-[#1FE3C2] hover:from-[#7B52FF] hover:to-[#1BD4B8] text-white font-bold py-4 px-8 text-lg rounded-xl shadow-2xl btn-enhanced w-full max-w-md mb-4"
                   >
                     {React.createElement(ctaVariants[ctaVariant].icon, { className: "w-6 h-6 mr-2" })}
-                    Get Complete Report - $27
+                    {ctaVariants[ctaVariant].text}
                   </Button>
-                  <p className="text-gray-400 text-sm mt-4">
-                    🔒 Secure Payment • ⚡ Instant Access • 🛡️ 7-Day Guarantee
+                  <p className="text-gray-400 text-sm">🔒 Secure payment • ⚡ Instant access • ✅ 30-day guarantee</p>
+                </motion.div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Final Screen */}
+        {currentStep === "final" && (
+          <motion.div
+            key="final"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="min-h-screen relative overflow-hidden"
+            style={{
+              background: "linear-gradient(135deg, #0B1A30 0%, #1a2332 50%, #0B1A30 100%)",
+            }}
+          >
+            {/* Background Image */}
+            <div
+              className="absolute inset-0 opacity-10"
+              style={{
+                backgroundImage: "url('/background/tech-kids.jpeg')",
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+                filter: "blur(2px)",
+              }}
+            />
+
+            <div className="relative z-10 min-h-screen flex flex-col">
+              {/* Main container */}
+              <div className="flex-1 container mx-auto px-4 py-6 md:py-12 max-w-4xl">
+                {/* Urgency Timer */}
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ duration: 0.5 }}
+                  className="text-center mb-6"
+                >
+                  <div className="bg-red-500/20 border-2 border-red-500 rounded-xl p-4 max-w-md mx-auto">
+                    <div className="flex items-center justify-center gap-2 mb-2">
+                      <Clock className="w-5 h-5 text-red-400" />
+                      <span className="text-red-400 font-bold">LIMITED ACCESS</span>
+                    </div>
+                    <div className="text-3xl font-bold text-white">{formatTime(timeLeft)}</div>
+                    <p className="text-red-300 text-sm">Time remaining to access report</p>
+                  </div>
+                </motion.div>
+
+                {/* Main Header */}
+                <motion.div
+                  initial={{ y: -30, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.2 }}
+                  className="text-center mb-8"
+                >
+                  <h1 className="text-2xl md:text-4xl lg:text-5xl font-bold text-white mb-4 leading-tight">
+                    🔓 UNLOCK COMPLETE REPORT
+                  </h1>
+                  <p className="text-lg md:text-xl text-[#FFCE00] font-semibold mb-4">
+                    Get immediate access to the detailed analysis + 30 days of continuous monitoring
                   </p>
                 </motion.div>
 
-                {/* Depoimentos */}
+                {/* Testimonials */}
                 <motion.div
                   initial={{ y: 30, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 1.2 }}
-                  className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6"
+                  transition={{ delay: 0.4 }}
+                  className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8"
                 >
                   {realTestimonials.map((testimonial, index) => (
-                    <div key={index} className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10">
-                      <div className="flex items-center gap-3 mb-3">
+                    <motion.div
+                      key={index}
+                      initial={{ x: index === 0 ? -50 : 50, opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      transition={{ delay: 0.6 + index * 0.2 }}
+                      className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6"
+                    >
+                      <div className="flex items-center gap-3 mb-4">
                         <img
                           src={testimonial.avatar || "/placeholder.svg"}
                           alt={testimonial.name}
@@ -1490,29 +1577,35 @@ export default function SafeKidAIFunil() {
                         />
                         <div>
                           <h4 className="text-white font-semibold">{testimonial.name}</h4>
-                          <p className="text-gray-400 text-sm">{testimonial.child}</p>
+                          <p className="text-[#1FE3C2] text-sm">{testimonial.child}</p>
                         </div>
-                        {testimonial.verified && <CheckCircle className="w-5 h-5 text-[#1FE3C2]" />}
+                        {testimonial.verified && <CheckCircle className="w-5 h-5 text-[#1FE3C2] ml-auto" />}
                       </div>
                       <p className="text-gray-300 text-sm italic">"{testimonial.text}"</p>
-                      <div className="flex text-[#FFCE00] mt-2">
+                      <div className="flex items-center gap-1 mt-3">
                         {[...Array(5)].map((_, i) => (
-                          <Star key={i} className="w-4 h-4 fill-current" />
+                          <Star key={i} className="w-4 h-4 text-yellow-400 fill-current" />
                         ))}
                       </div>
-                    </div>
+                    </motion.div>
                   ))}
                 </motion.div>
 
-                {/* Comentários Sociais */}
+                {/* Social Comments */}
                 <motion.div
                   initial={{ y: 30, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 1.4 }}
-                  className="space-y-3"
+                  transition={{ delay: 0.8 }}
+                  className="space-y-4 mb-8"
                 >
                   {socialComments.map((comment, index) => (
-                    <div key={index} className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10">
+                    <motion.div
+                      key={index}
+                      initial={{ x: -50, opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      transition={{ delay: 1 + index * 0.2 }}
+                      className="bg-gray-800/50 border border-gray-700 rounded-xl p-4"
+                    >
                       <div className="flex items-start gap-3">
                         <img
                           src={comment.avatar || "/placeholder.svg"}
@@ -1528,565 +1621,601 @@ export default function SafeKidAIFunil() {
                           <p className="text-gray-300 text-sm">{comment.comment}</p>
                         </div>
                       </div>
-                    </div>
+                    </motion.div>
                   ))}
+                </motion.div>
+
+                {/* Protected Families Counter */}
+                <motion.div
+                  initial={{ y: 30, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 1.2 }}
+                  className="bg-green-500/10 border border-green-500/30 rounded-xl p-4 mb-8 text-center"
+                >
+                  <p className="text-green-400 font-semibold">
+                    🛡️ <span className="text-2xl font-bold">{protectedFamilies.toLocaleString()}</span> families already
+                    protected
+                  </p>
+                </motion.div>
+
+                {/* CTA Button */}
+                <motion.div
+                  initial={{ y: 30, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 1.4 }}
+                  className="text-center"
+                >
+                  <Button
+                    onClick={() => handleStepTransition("checkout")}
+                    className="bg-gradient-to-r from-[#885EFF] to-[#1FE3C2] hover:from-[#7B52FF] hover:to-[#1BD4B8] text-white font-bold py-4 px-8 text-lg rounded-xl shadow-2xl btn-enhanced w-full max-w-md mb-4"
+                  >
+                    <Lock className="w-6 h-6 mr-2" />
+                    UNLOCK COMPLETE REPORT - $27
+                  </Button>
+                  <p className="text-gray-400 text-sm mb-4">
+                    🔒 Secure payment • ⚡ Instant access • ✅ 30-day guarantee
+                  </p>
+                  <p className="text-[#1FE3C2] text-sm font-semibold">
+                    ✅ One-time payment • No subscriptions • No hidden fees
+                  </p>
                 </motion.div>
               </div>
             </div>
           </motion.div>
         )}
 
-        {/* Página Final de Oferta */}
-        {currentStep === "final" && (
-          <motion.div
-            key="final"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="min-h-screen bg-gray-50"
-          >
-            <div className="container mx-auto px-4 py-8 max-w-4xl">
-              {/* Chamada Personalizada */}
-              <motion.div
-                initial={{ y: -30, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                className="bg-gradient-to-r from-[#885EFF] to-[#1FE3C2] rounded-2xl p-6 text-center mb-8"
-              >
-                <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
-                  🔐 Complete Report Ready for: <span className="text-yellow-300">{childName}</span>
-                </h1>
-                <p className="text-white/90">Unlock now and protect your child from digital threats</p>
-              </motion.div>
-
-              {/* Progresso da Missão */}
-              <motion.div
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.1 }}
-                className="bg-white rounded-xl p-6 mb-6 border border-gray-200 shadow-sm"
-              >
-                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                  🧩 Verification Progress: <span className="text-[#1FE3C2]">92% Complete</span>
-                </h3>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle className="w-5 h-5 text-green-500" />
-                    <span className="text-gray-700">Detection completed</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <CheckCircle className="w-5 h-5 text-green-500" />
-                    <span className="text-gray-700">Report generated</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Lock className="w-5 h-5 text-orange-500" />
-                    <span className="text-gray-700 font-semibold">Final access unlock pending</span>
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <Progress value={92} className="h-3" />
-                </div>
-              </motion.div>
-
-              {/* CTA Principal */}
-              <motion.div
-                initial={{ y: 30, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.2 }}
-                className="text-center"
-              >
-                <Button
-                  onClick={() => handleStepTransition("checkout")}
-                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-6 px-8 text-xl rounded-xl shadow-2xl mb-4 transform hover:scale-105 transition-all duration-200"
-                >
-                  <motion.div
-                    animate={{ rotate: [0, -15, 0] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                    className="mr-3"
-                  >
-                    🔓
-                  </motion.div>
-                  Get Complete Report - $27
-                </Button>
-              </motion.div>
-            </div>
-          </motion.div>
-        )}
-
-        {/* Página de Checkout */}
+        {/* Checkout Screen */}
         {currentStep === "checkout" && (
           <motion.div
             key="checkout"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="min-h-screen bg-gray-50"
+            className="min-h-screen relative overflow-hidden"
+            style={{
+              background: "linear-gradient(135deg, #0B1A30 0%, #1a2332 50%, #0B1A30 100%)",
+            }}
           >
-            <div className="container mx-auto px-4 py-8 max-w-4xl">
-              {/* Header */}
-              <div className="text-center mb-8">
-                <h1 className="text-3xl font-bold text-gray-800 mb-2">🔍 SafeKid AI – Complete Digital Report</h1>
-                <p className="text-gray-600">Secure checkout - Your information is protected</p>
-              </div>
+            {/* Background Image */}
+            <div
+              className="absolute inset-0 opacity-10"
+              style={{
+                backgroundImage: "url('/background/tech-kids.jpeg')",
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+                filter: "blur(2px)",
+              }}
+            />
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Product Details */}
-                <div className="space-y-6">
-                  {/* Main Product */}
-                  <Card className="border-2 border-blue-200">
-                    <CardContent className="p-6">
-                      <div className="flex items-start gap-4">
-                        <div className="w-16 h-16 bg-blue-100 rounded-xl flex items-center justify-center">
-                          <Shield className="w-8 h-8 text-blue-600" />
-                        </div>
-                        <div className="flex-1">
-                          <h3 className="text-xl font-bold text-gray-800 mb-2">SafeKid AI Digital Report</h3>
-                          <ul className="text-sm text-gray-600 space-y-1 mb-4">
-                            <li>✓ Social media scanning</li>
-                            <li>✓ Suspicious profile and message detection</li>
-                            <li>✓ Psychological manipulation analysis</li>
-                            <li>✓ Immediate and confidential delivery</li>
-                          </ul>
-                          <div className="text-2xl font-bold text-blue-600">$27</div>
-                        </div>
+            <div className="relative z-10 min-h-screen flex flex-col">
+              <div className="flex-1 container mx-auto px-4 py-6 md:py-12 max-w-2xl">
+                {/* Urgency Timer */}
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ duration: 0.5 }}
+                  className="text-center mb-6"
+                >
+                  <div className="bg-red-500/20 border-2 border-red-500 rounded-xl p-4 max-w-md mx-auto">
+                    <div className="flex items-center justify-center gap-2 mb-2">
+                      <Clock className="w-5 h-5 text-red-400" />
+                      <span className="text-red-400 font-bold">LIMITED ACCESS</span>
+                    </div>
+                    <div className="text-3xl font-bold text-white">{formatTime(timeLeft)}</div>
+                    <p className="text-red-300 text-sm">Time remaining to access report</p>
+                  </div>
+                </motion.div>
+
+                {/* Header */}
+                <motion.div
+                  initial={{ y: -30, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.2 }}
+                  className="text-center mb-8"
+                >
+                  <h1 className="text-2xl md:text-3xl font-bold text-white mb-4">🔒 Secure Checkout</h1>
+                  <p className="text-[#1FE3C2] font-semibold">Complete your order to unlock the report</p>
+                </motion.div>
+
+                {/* Order Summary */}
+                <motion.div
+                  initial={{ y: 30, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.4 }}
+                  className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6 mb-6"
+                >
+                  <h3 className="text-white font-bold text-lg mb-4">Order Summary</h3>
+
+                  <div className="space-y-3 mb-4">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-300">SafeKid AI Complete Report</span>
+                      <span className="text-white font-semibold">$27.00</span>
+                    </div>
+
+                    {orderBumpSelected && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-300">30-Day Continuous Protection</span>
+                        <span className="text-white font-semibold">$17.00</span>
                       </div>
-                    </CardContent>
-                  </Card>
+                    )}
+                  </div>
 
-                  {/* Order Bump */}
-                  <Card
-                    className={`border-2 transition-all duration-200 ${orderBumpSelected ? "border-blue-400 bg-blue-50" : "border-gray-200"}`}
-                  >
-                    <CardContent className="p-6">
-                      <div className="flex items-start gap-4">
-                        <Checkbox
-                          checked={orderBumpSelected}
-                          onCheckedChange={handleOrderBumpChange}
-                          className="mt-1"
-                        />
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Shield className="w-5 h-5 text-blue-600" />
-                            <h3 className="text-lg font-bold text-gray-800">🛡️ 30-Day Continuous Protection</h3>
-                          </div>
-                          <p className="text-sm text-gray-600 mb-3">
-                            Receive automatic alerts if new risks are detected. Includes weekly re-analysis and special
-                            support.
-                          </p>
-                          <div className="bg-blue-100 border border-blue-200 rounded-lg p-3 mb-3">
-                            <p className="text-sm text-blue-800 font-medium">
-                              ✅ Add for just <span className="font-bold">+$17</span>
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
+                  <div className="border-t border-gray-600 pt-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-white font-bold text-lg">Total</span>
+                      <span className="text-[#1FE3C2] font-bold text-xl">${purchaseData.totalAmount}.00</span>
+                    </div>
+                  </div>
+                </motion.div>
 
-                {/* Order Summary & Payment */}
-                <div className="space-y-6">
-                  {/* Order Summary */}
-                  <Card>
-                    <CardContent className="p-6">
-                      <h3 className="text-lg font-bold text-gray-800 mb-4">Order Summary</h3>
-                      <div className="space-y-3">
-                        <div className="flex justify-between">
-                          <span>SafeKid AI Digital Report</span>
-                          <span>$27.00</span>
+                {/* Order Bump */}
+                <motion.div
+                  initial={{ y: 30, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.6 }}
+                  className="bg-yellow-500/10 border-2 border-yellow-500 rounded-xl p-6 mb-6"
+                >
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      id="order-bump"
+                      checked={orderBumpSelected}
+                      onCheckedChange={handleOrderBumpChange}
+                      className="mt-1"
+                    />
+                    <div className="flex-1">
+                      <label htmlFor="order-bump" className="cursor-pointer">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Gift className="w-5 h-5 text-yellow-400" />
+                          <span className="text-yellow-400 font-bold">SPECIAL OFFER</span>
                         </div>
-                        {orderBumpSelected && (
-                          <div className="flex justify-between text-blue-600">
-                            <span>30-Day Protection</span>
-                            <span>$17.00</span>
-                          </div>
-                        )}
-                        <hr />
-                        <div className="flex justify-between font-bold text-lg">
-                          <span>Total</span>
-                          <span>${purchaseData.totalAmount}.00</span>
+                        <h4 className="text-white font-bold mb-2">Add 30-Day Continuous Protection for only $17</h4>
+                        <p className="text-gray-300 text-sm mb-3">
+                          Get real-time alerts whenever new risks are detected on your child's social media accounts.
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <span className="bg-red-500 text-white px-2 py-1 rounded text-xs font-bold">
+                            LIMITED TIME
+                          </span>
+                          <span className="text-gray-400 line-through">$47</span>
+                          <span className="text-yellow-400 font-bold">Only $17</span>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+                      </label>
+                    </div>
+                  </div>
+                </motion.div>
 
-                  {/* Payment Form */}
-                  <Card>
-                    <CardContent className="p-6">
-                      <h3 className="text-lg font-bold text-gray-800 mb-4">Payment Information</h3>
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                          <Input type="email" placeholder="your@email.com" className="w-full" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-                          <Input type="text" placeholder="John Doe" className="w-full" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Card Number</label>
-                          <Input type="text" placeholder="1234 5678 9012 3456" className="w-full" />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Expiry</label>
-                            <Input type="text" placeholder="MM/YY" />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">CVC</label>
-                            <Input type="text" placeholder="123" />
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* Purchase Button */}
+                {/* Payment Button */}
+                <motion.div
+                  initial={{ y: 30, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.8 }}
+                  className="text-center"
+                >
                   <Button
                     onClick={handleMainCheckout}
-                    className="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white font-bold py-4 text-lg rounded-xl shadow-lg"
+                    className="bg-gradient-to-r from-[#885EFF] to-[#1FE3C2] hover:from-[#7B52FF] hover:to-[#1BD4B8] text-white font-bold py-4 px-8 text-lg rounded-xl shadow-2xl btn-enhanced w-full mb-4"
                   >
-                    <CreditCard className="w-5 h-5 mr-2" />
-                    Complete Purchase - ${purchaseData.totalAmount}
+                    <CreditCard className="w-6 h-6 mr-2" />
+                    COMPLETE SECURE PAYMENT - ${purchaseData.totalAmount}
                   </Button>
-
-                  {/* Security Badges */}
-                  <div className="text-center">
-                    <div className="flex items-center justify-center gap-4 text-sm text-gray-500">
-                      <div className="flex items-center gap-1">
-                        <Lock className="w-4 h-4" />
-                        <span>SSL Encrypted</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Shield className="w-4 h-4" />
-                        <span>Secure Payment</span>
-                      </div>
+                  <p className="text-gray-400 text-sm mb-4">
+                    🔒 256-bit SSL encryption • ✅ 30-day money-back guarantee
+                  </p>
+                  <div className="flex items-center justify-center gap-4 text-xs text-gray-500">
+                    <div className="flex items-center gap-1">
+                      <Lock className="w-4 h-4" />
+                      <span>Secure Payment</span>
                     </div>
-                    <p className="text-xs text-gray-400 mt-2">Protected by 256-bit SSL encryption</p>
+                    <div className="flex items-center gap-1">
+                      <Shield className="w-4 h-4" />
+                      <span>Privacy Protected</span>
+                    </div>
                   </div>
-                </div>
+                </motion.div>
               </div>
             </div>
           </motion.div>
         )}
 
-        {/* Upsell 1 - Family Protection */}
+        {/* Upsell 1: Family Protection */}
         {currentStep === "upsell1" && (
           <motion.div
             key="upsell1"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center"
+            className="min-h-screen relative overflow-hidden"
+            style={{
+              background: "linear-gradient(135deg, #0B1A30 0%, #1a2332 50%, #0B1A30 100%)",
+            }}
           >
-            <div className="max-w-2xl mx-auto px-4 text-center">
-              <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.5 }}
-              >
-                <div className="bg-white rounded-2xl p-8 shadow-2xl">
-                  <div className="w-20 h-20 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <Gift className="w-10 h-10 text-white" />
+            <div className="relative z-10 min-h-screen flex flex-col justify-center">
+              <div className="container mx-auto px-4 py-8 max-w-2xl">
+                {/* Header */}
+                <motion.div
+                  initial={{ y: -30, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  className="text-center mb-8"
+                >
+                  <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-[#885EFF] to-[#1FE3C2] rounded-full mb-4">
+                    <Shield className="w-8 h-8 text-white" />
                   </div>
+                  <h1 className="text-3xl md:text-4xl font-bold text-white mb-4">🛡️ PROTECT YOUR ENTIRE FAMILY</h1>
+                  <p className="text-lg text-[#1FE3C2] font-semibold">
+                    Extend protection to all family members for just $37 more
+                  </p>
+                </motion.div>
 
-                  <h1 className="text-3xl font-bold text-gray-800 mb-4">
-                    🎁 Protect Your Entire Family with SafeKid AI
-                  </h1>
-
-                  <div className="text-left mb-6 space-y-3">
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                      <span>✔️ Monitoring for up to 3 profiles</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                      <span>✔️ Monthly reports via WhatsApp</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                      <span>✔️ Complete activity history</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                      <span>✔️ Exclusive family support</span>
-                    </div>
+                {/* Benefits */}
+                <motion.div
+                  initial={{ y: 30, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.2 }}
+                  className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6 mb-8"
+                >
+                  <h3 className="text-white font-bold text-lg mb-4">What you get:</h3>
+                  <div className="space-y-3">
+                    {[
+                      "Protection for up to 5 family members",
+                      "Real-time monitoring for all accounts",
+                      "Family dashboard with consolidated reports",
+                      "Priority support and alerts",
+                      "Advanced threat detection",
+                    ].map((benefit, index) => (
+                      <div key={index} className="flex items-center gap-3">
+                        <CheckCircle className="w-5 h-5 text-[#1FE3C2]" />
+                        <span className="text-gray-300">{benefit}</span>
+                      </div>
+                    ))}
                   </div>
+                </motion.div>
 
-                  <div className="bg-gradient-to-r from-blue-100 to-purple-100 rounded-xl p-6 mb-6">
-                    <div className="text-4xl font-bold text-blue-600 mb-2">Only $47</div>
-                    <p className="text-gray-600">One-time payment for complete family protection</p>
-                  </div>
+                {/* Pricing */}
+                <motion.div
+                  initial={{ y: 30, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.4 }}
+                  className="bg-green-500/10 border border-green-500/30 rounded-xl p-6 mb-8 text-center"
+                >
+                  <p className="text-gray-300 mb-2">
+                    Regular price: <span className="line-through">$97</span>
+                  </p>
+                  <p className="text-3xl font-bold text-[#1FE3C2] mb-2">Only $37</p>
+                  <p className="text-green-400 font-semibold">Save $60 today!</p>
+                </motion.div>
 
-                  <div className="space-y-4">
-                    <Button
-                      onClick={() => handleUpsellPurchase(1, 47)}
-                      className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold py-4 text-lg rounded-xl"
-                    >
-                      YES, PROTECT MY FAMILY
-                    </Button>
-
-                    <button
-                      onClick={() => handleUpsellSkip(1)}
-                      className="w-full text-gray-500 hover:text-gray-700 underline"
-                    >
-                      No thanks, continue with single report
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
+                {/* CTA Buttons */}
+                <motion.div
+                  initial={{ y: 30, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.6 }}
+                  className="space-y-4"
+                >
+                  <Button
+                    onClick={() => handleUpsellPurchase(1, 37)}
+                    className="w-full bg-gradient-to-r from-[#885EFF] to-[#1FE3C2] hover:from-[#7B52FF] hover:to-[#1BD4B8] text-white font-bold py-4 px-8 text-lg rounded-xl"
+                  >
+                    YES, PROTECT MY ENTIRE FAMILY - $37
+                  </Button>
+                  <Button
+                    onClick={() => handleUpsellSkip(1)}
+                    variant="outline"
+                    className="w-full border-gray-600 text-gray-400 hover:bg-gray-800"
+                  >
+                    No thanks, continue with single protection
+                  </Button>
+                </motion.div>
+              </div>
             </div>
           </motion.div>
         )}
 
-        {/* Upsell 2 - Anti-Manipulation Guide */}
+        {/* Upsell 2: Anti-Manipulation Guide */}
         {currentStep === "upsell2" && (
           <motion.div
             key="upsell2"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="min-h-screen bg-gradient-to-br from-orange-50 to-red-50 flex items-center justify-center"
+            className="min-h-screen relative overflow-hidden"
+            style={{
+              background: "linear-gradient(135deg, #0B1A30 0%, #1a2332 50%, #0B1A30 100%)",
+            }}
           >
-            <div className="max-w-2xl mx-auto px-4 text-center">
-              <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.5 }}
-              >
-                <div className="bg-white rounded-2xl p-8 shadow-2xl">
-                  <div className="w-20 h-20 bg-gradient-to-r from-orange-500 to-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <BookOpen className="w-10 h-10 text-white" />
+            <div className="relative z-10 min-h-screen flex flex-col justify-center">
+              <div className="container mx-auto px-4 py-8 max-w-2xl">
+                {/* Header */}
+                <motion.div
+                  initial={{ y: -30, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  className="text-center mb-8"
+                >
+                  <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-[#FF4B4B] to-[#FF6B6B] rounded-full mb-4">
+                    <BookOpen className="w-8 h-8 text-white" />
                   </div>
+                  <h1 className="text-3xl md:text-4xl font-bold text-white mb-4">
+                    📚 COMPLETE ANTI-MANIPULATION GUIDE
+                  </h1>
+                  <p className="text-lg text-[#FFCE00] font-semibold">
+                    Learn how to protect your child from online predators - Only $19
+                  </p>
+                </motion.div>
 
-                  <h1 className="text-3xl font-bold text-gray-800 mb-4">🧠 Help Your Child Recognize Online Threats</h1>
-
-                  <div className="text-left mb-6 space-y-3">
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                      <span>📘 Interactive Guide: How to avoid digital traps</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                      <span>✅ Practical strategies for parents</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                      <span>✅ Accessible and educational language</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                      <span>✅ Immediate delivery via email</span>
-                    </div>
+                {/* Benefits */}
+                <motion.div
+                  initial={{ y: 30, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.2 }}
+                  className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6 mb-8"
+                >
+                  <h3 className="text-white font-bold text-lg mb-4">What you'll learn:</h3>
+                  <div className="space-y-3">
+                    {[
+                      "How to identify grooming patterns",
+                      "Warning signs of online manipulation",
+                      "How to talk to your child about online safety",
+                      "Emergency action protocols",
+                      "Legal steps to take if needed",
+                    ].map((benefit, index) => (
+                      <div key={index} className="flex items-center gap-3">
+                        <CheckCircle className="w-5 h-5 text-[#1FE3C2]" />
+                        <span className="text-gray-300">{benefit}</span>
+                      </div>
+                    ))}
                   </div>
+                </motion.div>
 
-                  <div className="bg-gradient-to-r from-orange-100 to-red-100 rounded-xl p-6 mb-6">
-                    <div className="text-4xl font-bold text-orange-600 mb-2">Only $20</div>
-                    <p className="text-gray-600">Digital product (PDF + bonus videos)</p>
-                  </div>
+                {/* Pricing */}
+                <motion.div
+                  initial={{ y: 30, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.4 }}
+                  className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-6 mb-8 text-center"
+                >
+                  <p className="text-gray-300 mb-2">
+                    Regular price: <span className="line-through">$47</span>
+                  </p>
+                  <p className="text-3xl font-bold text-[#FFCE00] mb-2">Only $19</p>
+                  <p className="text-yellow-400 font-semibold">Save $28 today!</p>
+                </motion.div>
 
-                  <div className="space-y-4">
-                    <Button
-                      onClick={() => handleUpsellPurchase(2, 20)}
-                      className="w-full bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white font-bold py-4 text-lg rounded-xl"
-                    >
-                      YES, I WANT THIS GUIDE
-                    </Button>
-
-                    <button
-                      onClick={() => handleUpsellSkip(2)}
-                      className="w-full text-gray-500 hover:text-gray-700 underline"
-                    >
-                      No thanks, continue
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
+                {/* CTA Buttons */}
+                <motion.div
+                  initial={{ y: 30, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.6 }}
+                  className="space-y-4"
+                >
+                  <Button
+                    onClick={() => handleUpsellPurchase(2, 19)}
+                    className="w-full bg-gradient-to-r from-[#FF4B4B] to-[#FF6B6B] hover:from-[#FF3B3B] hover:to-[#FF5B5B] text-white font-bold py-4 px-8 text-lg rounded-xl"
+                  >
+                    YES, I WANT THE COMPLETE GUIDE - $19
+                  </Button>
+                  <Button
+                    onClick={() => handleUpsellSkip(2)}
+                    variant="outline"
+                    className="w-full border-gray-600 text-gray-400 hover:bg-gray-800"
+                  >
+                    No thanks, continue without guide
+                  </Button>
+                </motion.div>
+              </div>
             </div>
           </motion.div>
         )}
 
-        {/* Upsell 3 - Lifetime Monitor */}
+        {/* Upsell 3: Lifetime Monitoring */}
         {currentStep === "upsell3" && (
           <motion.div
             key="upsell3"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-50 flex items-center justify-center"
+            className="min-h-screen relative overflow-hidden"
+            style={{
+              background: "linear-gradient(135deg, #0B1A30 0%, #1a2332 50%, #0B1A30 100%)",
+            }}
           >
-            <div className="max-w-2xl mx-auto px-4 text-center">
-              <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.5 }}
-              >
-                <div className="bg-white rounded-2xl p-8 shadow-2xl">
-                  <div className="w-20 h-20 bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <Infinity className="w-10 h-10 text-white" />
+            <div className="relative z-10 min-h-screen flex flex-col justify-center">
+              <div className="container mx-auto px-4 py-8 max-w-2xl">
+                {/* Header */}
+                <motion.div
+                  initial={{ y: -30, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  className="text-center mb-8"
+                >
+                  <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-[#FFCE00] to-[#FFD700] rounded-full mb-4">
+                    <Infinity className="w-8 h-8 text-black" />
                   </div>
+                  <h1 className="text-3xl md:text-4xl font-bold text-white mb-4">♾️ LIFETIME MONITORING</h1>
+                  <p className="text-lg text-[#FFCE00] font-semibold">
+                    Never worry again - Lifetime protection for just $67
+                  </p>
+                </motion.div>
 
-                  <h1 className="text-3xl font-bold text-gray-800 mb-4">
-                    🛡️ SafeKid Monitor Lifetime – Protection Forever
-                  </h1>
-
-                  <div className="text-left mb-6 space-y-3">
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                      <span>✔️ Continuous monitoring without expiration</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                      <span>✔️ Automatic monthly analysis</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                      <span>✔️ Immediate alerts for new threats</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                      <span>✔️ Lifetime support included</span>
-                    </div>
+                {/* Benefits */}
+                <motion.div
+                  initial={{ y: 30, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.2 }}
+                  className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6 mb-8"
+                >
+                  <h3 className="text-white font-bold text-lg mb-4">Lifetime benefits:</h3>
+                  <div className="space-y-3">
+                    {[
+                      "Unlimited monitoring forever",
+                      "Real-time alerts for life",
+                      "All future updates included",
+                      "Priority support forever",
+                      "New platform monitoring as they emerge",
+                    ].map((benefit, index) => (
+                      <div key={index} className="flex items-center gap-3">
+                        <CheckCircle className="w-5 h-5 text-[#1FE3C2]" />
+                        <span className="text-gray-300">{benefit}</span>
+                      </div>
+                    ))}
                   </div>
+                </motion.div>
 
-                  <div className="bg-gradient-to-r from-purple-100 to-indigo-100 rounded-xl p-6 mb-6">
-                    <div className="text-4xl font-bold text-purple-600 mb-2">One-time $97</div>
-                    <p className="text-gray-600">Never pay again - lifetime protection</p>
-                  </div>
+                {/* Pricing */}
+                <motion.div
+                  initial={{ y: 30, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.4 }}
+                  className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-6 mb-8 text-center"
+                >
+                  <p className="text-gray-300 mb-2">
+                    Regular price: <span className="line-through">$297/year</span>
+                  </p>
+                  <p className="text-3xl font-bold text-[#FFCE00] mb-2">Only $67 ONCE</p>
+                  <p className="text-yellow-400 font-semibold">Save over $1,000 in the long run!</p>
+                </motion.div>
 
-                  <div className="space-y-4">
-                    <Button
-                      onClick={() => handleUpsellPurchase(3, 97)}
-                      className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold py-4 text-lg rounded-xl"
-                    >
-                      ACTIVATE LIFETIME PROTECTION
-                    </Button>
-
-                    <button
-                      onClick={() => handleUpsellSkip(3)}
-                      className="w-full text-gray-500 hover:text-gray-700 underline"
-                    >
-                      No thanks, continue to my report
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
+                {/* CTA Buttons */}
+                <motion.div
+                  initial={{ y: 30, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.6 }}
+                  className="space-y-4"
+                >
+                  <Button
+                    onClick={() => handleUpsellPurchase(3, 67)}
+                    className="w-full bg-gradient-to-r from-[#FFCE00] to-[#FFD700] hover:from-[#FFBE00] hover:to-[#FFC700] text-black font-bold py-4 px-8 text-lg rounded-xl"
+                  >
+                    YES, I WANT LIFETIME PROTECTION - $67
+                  </Button>
+                  <Button
+                    onClick={() => handleUpsellSkip(3)}
+                    variant="outline"
+                    className="w-full border-gray-600 text-gray-400 hover:bg-gray-800"
+                  >
+                    No thanks, continue to my report
+                  </Button>
+                </motion.div>
+              </div>
             </div>
           </motion.div>
         )}
 
-        {/* Página de Agradecimento */}
+        {/* Thank You Screen */}
         {currentStep === "thank-you" && (
           <motion.div
             key="thank-you"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center"
+            className="min-h-screen relative overflow-hidden"
+            style={{
+              background: "linear-gradient(135deg, #0B1A30 0%, #1a2332 50%, #0B1A30 100%)",
+            }}
           >
-            <div className="max-w-3xl mx-auto px-4 text-center">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ duration: 0.5 }}
-                className="w-24 h-24 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-6"
-              >
-                <CheckCircle className="w-12 h-12 text-white" />
-              </motion.div>
-
-              <motion.div initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.3 }}>
-                <h1 className="text-3xl md:text-4xl font-bold text-gray-800 mb-4">🎉 Mission Accomplished!</h1>
-                <p className="text-xl text-gray-600 mb-6">
-                  You have successfully activated digital protection for <strong>{childName}</strong>.
-                </p>
+            <div className="relative z-10 min-h-screen flex flex-col justify-center">
+              <div className="container mx-auto px-4 py-8 max-w-2xl">
+                {/* Success Header */}
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ duration: 0.5 }}
+                  className="text-center mb-8"
+                >
+                  <div className="inline-flex items-center justify-center w-20 h-20 bg-green-500 rounded-full mb-4">
+                    <CheckCircle className="w-10 h-10 text-white" />
+                  </div>
+                  <h1 className="text-3xl md:text-4xl font-bold text-white mb-4">✅ PURCHASE COMPLETED!</h1>
+                  <p className="text-lg text-[#1FE3C2] font-semibold">Thank you for protecting {childName}</p>
+                </motion.div>
 
                 {/* Purchase Summary */}
-                <div className="bg-white rounded-2xl p-8 shadow-lg mb-8">
-                  <h2 className="text-2xl font-bold text-gray-800 mb-6">Your Purchase Summary</h2>
-                  <div className="space-y-4 text-left max-w-md mx-auto">
-                    <div className="flex justify-between items-center">
-                      <span>✅ SafeKid AI Digital Report</span>
-                      <span className="font-bold">$27</span>
+                <motion.div
+                  initial={{ y: 30, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.2 }}
+                  className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6 mb-8"
+                >
+                  <h3 className="text-white font-bold text-lg mb-4">Purchase Summary</h3>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">SafeKid AI Complete Report</span>
+                      <span className="text-white">$27.00</span>
                     </div>
                     {purchaseData.orderBump && (
-                      <div className="flex justify-between items-center text-blue-600">
-                        <span>✅ 30-Day Protection</span>
-                        <span className="font-bold">$17</span>
+                      <div className="flex justify-between">
+                        <span className="text-gray-300">30-Day Continuous Protection</span>
+                        <span className="text-white">$17.00</span>
                       </div>
                     )}
                     {purchaseData.upsell1 && (
-                      <div className="flex justify-between items-center text-purple-600">
-                        <span>✅ Family Protection</span>
-                        <span className="font-bold">$47</span>
+                      <div className="flex justify-between">
+                        <span className="text-gray-300">Family Protection</span>
+                        <span className="text-white">$37.00</span>
                       </div>
                     )}
                     {purchaseData.upsell2 && (
-                      <div className="flex justify-between items-center text-orange-600">
-                        <span>✅ Anti-Manipulation Guide</span>
-                        <span className="font-bold">$20</span>
+                      <div className="flex justify-between">
+                        <span className="text-gray-300">Anti-Manipulation Guide</span>
+                        <span className="text-white">$19.00</span>
                       </div>
                     )}
                     {purchaseData.upsell3 && (
-                      <div className="flex justify-between items-center text-indigo-600">
-                        <span>✅ Lifetime Monitor</span>
-                        <span className="font-bold">$97</span>
+                      <div className="flex justify-between">
+                        <span className="text-gray-300">Lifetime Monitoring</span>
+                        <span className="text-white">$67.00</span>
                       </div>
                     )}
-                    <hr className="my-4" />
-                    <div className="flex justify-between items-center text-xl font-bold">
-                      <span>Total Paid:</span>
-                      <span className="text-green-600">${purchaseData.totalAmount}</span>
+                  </div>
+                  <div className="border-t border-gray-600 pt-3 mt-3">
+                    <div className="flex justify-between">
+                      <span className="text-white font-bold text-lg">Total Paid</span>
+                      <span className="text-[#1FE3C2] font-bold text-xl">${purchaseData.totalAmount}.00</span>
                     </div>
                   </div>
-                </div>
+                </motion.div>
 
                 {/* Next Steps */}
-                <div className="bg-white rounded-2xl p-8 shadow-lg mb-6">
-                  <h2 className="text-2xl font-bold text-gray-800 mb-4">Next Steps:</h2>
-                  <div className="space-y-4 text-left">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
-                        1
-                      </div>
-                      <span>Check your email to download the complete report</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
-                        2
-                      </div>
-                      <span>Continuous monitoring is now now active</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
-                        3
-                      </div>
-                      <span>You'll receive real-time alerts on WhatsApp</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Support Contact */}
-                <div className="bg-gray-100 rounded-xl p-6 mb-6">
-                  <h3 className="text-lg font-bold text-gray-800 mb-2">Need Support?</h3>
-                  <p className="text-gray-600 mb-4">Our team is here to help you 24/7</p>
-                  <div className="flex justify-center gap-4">
-                    <Button variant="outline" className="flex items-center gap-2 bg-transparent">
-                      <MessageCircle className="w-4 h-4" />
-                      WhatsApp Support
-                    </Button>
-                    <Button variant="outline" className="flex items-center gap-2 bg-transparent">
-                      <Mail className="w-4 h-4" />
-                      Email Support
-                    </Button>
-                  </div>
-                </div>
-
-                <Button
-                  onClick={() => window.location.reload()}
-                  className="bg-gradient-to-r from-[#885EFF] to-[#1FE3C2] text-white font-bold py-3 px-8 rounded-xl"
+                <motion.div
+                  initial={{ y: 30, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.4 }}
+                  className="bg-green-500/10 border border-green-500/30 rounded-xl p-6 mb-8"
                 >
-                  Protect Another Child
-                </Button>
-              </motion.div>
+                  <h3 className="text-green-400 font-bold text-lg mb-4">What happens next:</h3>
+                  <div className="space-y-3">
+                    {[
+                      "Complete report sent to your email within 5 minutes",
+                      "SMS confirmation with access link",
+                      "Monitoring begins immediately",
+                      "You'll receive alerts for any new risks detected",
+                    ].map((step, index) => (
+                      <div key={index} className="flex items-center gap-3">
+                        <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
+                          {index + 1}
+                        </div>
+                        <span className="text-gray-300">{step}</span>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+
+                {/* Support Information */}
+                <motion.div
+                  initial={{ y: 30, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.6 }}
+                  className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-6 text-center"
+                >
+                  <h3 className="text-blue-400 font-bold text-lg mb-4">Need Help?</h3>
+                  <p className="text-gray-300 mb-4">
+                    Our support team is available 24/7 to help you understand your report and take action.
+                  </p>
+                  <div className="flex items-center justify-center gap-4 text-sm">
+                    <div className="flex items-center gap-2">
+                      <Mail className="w-4 h-4 text-blue-400" />
+                      <span className="text-gray-300">support@safekidai.com</span>
+                    </div>
+                  </div>
+                </motion.div>
+              </div>
             </div>
           </motion.div>
         )}

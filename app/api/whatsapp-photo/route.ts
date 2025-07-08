@@ -19,6 +19,15 @@ export async function POST(request: NextRequest) {
     const cleanPhone = phone.replace(/[^0-9]/g, "");
     console.log("🧹 Phone limpo:", cleanPhone);
 
+    // Valida o número (mínimo de 10 dígitos, incluindo código do país)
+    if (cleanPhone.length < 10) {
+      console.log("❌ Número inválido: menos de 10 dígitos");
+      return NextResponse.json(
+        { success: false, error: "Número de telefone inválido: deve conter pelo menos 10 dígitos" },
+        { status: 400, headers: { "Access-Control-Allow-Origin": "*" } }
+      );
+    }
+
     // Adiciona código do país se não tiver (assumindo Brasil +55)
     let fullNumber = cleanPhone;
     if (!cleanPhone.startsWith("55") && cleanPhone.length === 11) {
@@ -35,22 +44,25 @@ export async function POST(request: NextRequest) {
     while (attempt < maxRetries) {
       try {
         console.log(`🌐 Tentativa ${attempt + 1} de fetch para API externa...`);
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
-
         const response = await fetch(apiUrl, {
           method: "GET",
           headers: {
             Accept: "application/json",
+            Origin: "https://whatspy.chat",
           },
-          signal: controller.signal,
+          signal: AbortSignal.timeout?.(10000), // Timeout de 10 segundos, como no projeto funcional
         });
 
-        clearTimeout(timeoutId);
         console.log("📡 Response status:", response.status, "ok:", response.ok);
 
         if (!response.ok) {
-          const errorText = await response.text();
+          let errorText;
+          try {
+            const errorData = await response.json();
+            errorText = JSON.stringify(errorData);
+          } catch {
+            errorText = await response.text();
+          }
           console.error("❌ API externa retornou erro:", response.status, errorText);
           throw new Error(`Falha na API externa: ${response.status} - ${errorText}`);
         }
@@ -96,7 +108,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json(
             {
               success: false,
-              error: `Erro ao conectar com API externa após ${maxRetries} tentativas: ${fetchError.message}`,
+              error: `Não foi possível consultar a foto do perfil: ${fetchError.message}`,
               result: "https://media.istockphoto.com/id/1337144146/vector/default-avatar-profile-icon-vector.jpg?s=612x612&w=0&k=20&c=BIbFwuv7FxTWvh5S3vB6bkT0Qv8Vn8N5Ffseq84ClGI=",
               is_photo_private: true,
             },
